@@ -11,6 +11,17 @@
 *.sln.docstates
 *.env
 
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+.node_repl_history
+*.tgz
+.yarn-integrity
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
@@ -35,7 +46,7 @@ bld/
 [Ll]ogs/
 
 # Build results on 'Bin' directories
-**/[Bb]in/*
+# **/[Bb]in/* - Commented out for Express.js projects (bin/www is needed)
 # Uncomment if you have tasks that rely on *.refresh files to move binaries
 # (https://github.com/github/gitignore/pull/3736)
 #!**/[Bb]in/*.refresh
