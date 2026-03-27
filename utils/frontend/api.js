@@ -1,0 +1,123 @@
+import { getStoredToken, setStoredToken } from './auth';
+
+const toQueryString = (params = {}) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      value.filter(Boolean).forEach((item) => query.append(key, item));
+      return;
+    }
+    if (typeof value === 'string' && value.trim() === '') return;
+    query.set(key, value);
+  });
+  return query.toString();
+};
+
+const jsonOptions = (method, body) => ({
+  method,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
+export const apiFetch = async (path, options = {}) => {
+  const token = getStoredToken();
+  const headers = new Headers(options.headers || {});
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(path, {
+    credentials: 'include',
+    ...options,
+    headers,
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const payload = contentType.includes('application/json')
+    ? await response.json()
+    : { success: response.ok, data: await response.text() };
+
+  if (!response.ok || payload.success === false) {
+    if (response.status === 401) {
+      setStoredToken('');
+    }
+    throw new Error(payload.message || `Request failed (${response.status})`);
+  }
+
+  return payload;
+};
+
+export const api = {
+  login: (body) => apiFetch('/api/auth/login', jsonOptions('POST', body)),
+  register: (body) => apiFetch('/api/auth/register', jsonOptions('POST', body)),
+  refresh: (body = {}) => apiFetch('/api/auth/refresh', jsonOptions('POST', body)),
+  me: () => apiFetch('/api/auth/me'),
+  logout: (body = {}) => apiFetch('/api/auth/logout', jsonOptions('POST', body)),
+
+  users: (params = {}) => apiFetch(`/api/users?${toQueryString({ limit: 50, ...params })}`),
+  user: (id) => apiFetch(`/api/users/${id}`),
+  updateUser: (id, body) => apiFetch(`/api/users/${id}`, jsonOptions('PUT', body)),
+  deleteUser: (id) => apiFetch(`/api/users/${id}`, { method: 'DELETE' }),
+
+  addresses: (params = {}) => apiFetch(`/api/addresses?${toQueryString(params)}`),
+  address: (id) => apiFetch(`/api/addresses/${id}`),
+  createAddress: (body) => apiFetch('/api/addresses', jsonOptions('POST', body)),
+  updateAddress: (id, body) => apiFetch(`/api/addresses/${id}`, jsonOptions('PUT', body)),
+  deleteAddress: (id) => apiFetch(`/api/addresses/${id}`, { method: 'DELETE' }),
+
+  categories: (params = {}) => apiFetch(`/api/categories?${toQueryString({ limit: 100, ...params })}`),
+  category: (id) => apiFetch(`/api/categories/${id}`),
+  createCategory: (body) => apiFetch('/api/categories', jsonOptions('POST', body)),
+  updateCategory: (id, body) => apiFetch(`/api/categories/${id}`, jsonOptions('PUT', body)),
+  deleteCategory: (id) => apiFetch(`/api/categories/${id}`, { method: 'DELETE' }),
+
+  products: (params = {}) => apiFetch(`/api/products?${toQueryString({ limit: 48, ...params })}`),
+  product: (id) => apiFetch(`/api/products/${id}`),
+  createProduct: (body) => apiFetch('/api/products', jsonOptions('POST', body)),
+  updateProduct: (id, body) => apiFetch(`/api/products/${id}`, jsonOptions('PUT', body)),
+  deleteProduct: (id) => apiFetch(`/api/products/${id}`, { method: 'DELETE' }),
+
+  orders: (params = {}) => apiFetch(`/api/orders?${toQueryString({ limit: 50, ...params })}`),
+  order: (id) => apiFetch(`/api/orders/${id}`),
+  createOrder: (body) => apiFetch('/api/orders', jsonOptions('POST', body)),
+  updateOrderStatus: (id, body) => apiFetch(`/api/orders/${id}/status`, jsonOptions('PATCH', body)),
+  deleteOrder: (id) => apiFetch(`/api/orders/${id}`, { method: 'DELETE' }),
+
+  auctions: (params = {}) => apiFetch(`/api/auctions?${toQueryString({ limit: 50, ...params })}`),
+  auction: (id) => apiFetch(`/api/auctions/${id}`),
+  createAuction: (body) => apiFetch('/api/auctions', jsonOptions('POST', body)),
+  updateAuction: (id, body) => apiFetch(`/api/auctions/${id}`, jsonOptions('PUT', body)),
+  placeBid: (id, amount) => apiFetch(`/api/auctions/${id}/bids`, jsonOptions('POST', { amount })),
+  closeAuction: (id, body = { force: true }) => apiFetch(`/api/auctions/${id}/close`, jsonOptions('POST', body)),
+  deleteAuction: (id) => apiFetch(`/api/auctions/${id}`, { method: 'DELETE' }),
+
+  conversations: (params = {}) => apiFetch(`/api/conversations?${toQueryString({ limit: 50, ...params })}`),
+  createConversation: (body) => apiFetch('/api/conversations', jsonOptions('POST', body)),
+  conversationMessages: (id, params = {}) => apiFetch(`/api/conversations/${id}/messages?${toQueryString({ limit: 100, ...params })}`),
+  sendMessage: (id, body) => apiFetch(`/api/conversations/${id}/messages`, jsonOptions('POST', body)),
+  updateMessage: (conversationId, messageId, body) => apiFetch(`/api/conversations/${conversationId}/messages/${messageId}`, jsonOptions('PATCH', body)),
+  markConversationRead: (id) => apiFetch(`/api/conversations/${id}/read`, jsonOptions('PATCH', {})),
+  deleteMessage: (conversationId, messageId) => apiFetch(`/api/conversations/${conversationId}/messages/${messageId}`, { method: 'DELETE' }),
+  deleteMessageAttachment: (conversationId, messageId, mediaId) => apiFetch(`/api/conversations/${conversationId}/messages/${messageId}/media/${mediaId}`, { method: 'DELETE' }),
+
+  uploadBase64: (body) => apiFetch('/api/uploads/base64', jsonOptions('POST', body)),
+  uploadSingle: (formData) => apiFetch('/api/uploads/multipart', { method: 'POST', body: formData }),
+  uploadMany: (formData) => apiFetch('/api/uploads/multipart-many', { method: 'POST', body: formData }),
+  uploadRemote: (body) => apiFetch('/api/uploads/remote', jsonOptions('POST', body)),
+  deleteMedia: (id) => apiFetch(`/api/uploads/${id}`, { method: 'DELETE' }),
+
+  imports: (body) => apiFetch('/api/imports/chotot', jsonOptions('POST', body)),
+  importBatches: (params = {}) => apiFetch(`/api/imports/batches?${toQueryString({ limit: 30, ...params })}`),
+  importBatch: (id) => apiFetch(`/api/imports/batches/${id}`),
+
+  escrows: (params = {}) => apiFetch(`/api/escrows?${toQueryString({ limit: 50, ...params })}`),
+  escrow: (id) => apiFetch(`/api/escrows/${id}`),
+  updateEscrow: (id, action, body) => apiFetch(`/api/escrows/${id}/${action}`, jsonOptions('PATCH', body)),
+
+  reviews: (params = {}) => apiFetch(`/api/reviews?${toQueryString({ limit: 50, ...params })}`),
+  review: (id) => apiFetch(`/api/reviews/${id}`),
+  createReview: (body) => apiFetch('/api/reviews', jsonOptions('POST', body)),
+  respondReview: (id, body) => apiFetch(`/api/reviews/${id}/respond`, jsonOptions('PATCH', body)),
+  updateReviewVisibility: (id, body) => apiFetch(`/api/reviews/${id}/visibility`, jsonOptions('PATCH', body)),
+};

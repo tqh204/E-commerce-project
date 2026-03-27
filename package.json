@@ -3,13 +3,28 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node ./bin/www"
+    "start": "node ./bin/www",
+    "dev:react": "vite",
+    "build:react": "vite build",
+    "seed:marketplace": "node seed-marketplace.js",
+    "check:schemas": "node -e \"require('./schemas')\"",
+    "normalize:chotot": "node normalize-chotot-products.js",
+    "test:smoke": "node tests/smoke.js"
   },
   "dependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
     "cookie-parser": "~1.4.4",
     "debug": "~2.6.9",
     "express": "4.22.1",
     "mongoose": "^9.3.1",
-    "morgan": "1.10.1"
+    "morgan": "1.10.1",
+    "multer": "^2.1.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "vite": "^8.0.3"
   }
 }

@@ -8,6 +8,8 @@ var app = require('../app');
 var debug = require('debug')('e-commerce:server');
 var http = require('http');
 var connectDB = require('../config/database');
+var { startAuctionLifecycleMonitor } = require('../lib/auctionLifecycle');
+var { initSocket } = require('../lib/socket');
 
 /**
  * Get port from environment and store in Express.
@@ -21,12 +23,15 @@ app.set('port', port);
  */
 
 var server = http.createServer(app);
+initSocket(server);
 
 /**
  * Connect to MongoDB.
  */
 
-connectDB();
+connectDB().then(function() {
+  startAuctionLifecycleMonitor();
+});
 
 /**
  * Listen on provided port, on all network interfaces.

@@ -1,20 +1,13 @@
-var express = require('express');
-var router = express.Router();
-var productController = require('../controllers/productController');
+const express = require('express');
+const controller = require('../controllers/productController');
+const { optionalAuth, requireAnyRole, requireAuth } = require('../middleware/auth');
 
-// GET tất cả sản phẩm
-router.get('/', productController.getAllProducts);
+const router = express.Router();
 
-// GET sản phẩm theo ID
-router.get('/:id', productController.getProductById);
-
-// POST thêm sản phẩm mới
-router.post('/', productController.createProduct);
-
-// PUT cập nhật sản phẩm
-router.put('/:id', productController.updateProduct);
-
-// DELETE xóa sản phẩm
-router.delete('/:id', productController.deleteProduct);
+router.get('/', optionalAuth, controller.getAllProducts);
+router.get('/:id', optionalAuth, controller.getProductById);
+router.post('/', requireAnyRole('seller', 'admin'), controller.createProduct);
+router.put('/:id', requireAuth, controller.updateProduct);
+router.delete('/:id', requireAuth, controller.deleteProduct);
 
 module.exports = router;

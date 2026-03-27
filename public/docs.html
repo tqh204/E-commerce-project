@@ -1,0 +1,175 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Marketplace API Explorer</title>
+  <style>
+    :root{--bg:#f6efe4;--panel:#fff9f1;--line:#dcc8ad;--ink:#221b16;--muted:#6c6054;--accent:#c45824;--olive:#4a6744;--shadow:0 18px 48px rgba(78,56,33,.12)}
+    *{box-sizing:border-box}body{margin:0;font-family:"Segoe UI",Tahoma,sans-serif;color:var(--ink);background:radial-gradient(circle at top left,#f6d8bf 0,transparent 25%),linear-gradient(180deg,#f8f1e6,#ecdfcb)}
+    .shell{width:min(1220px,calc(100% - 28px));margin:28px auto 44px}.hero,.card{background:rgba(255,249,241,.92);border:1px solid rgba(98,74,52,.12);border-radius:26px;box-shadow:var(--shadow)}
+    .hero{padding:30px;margin-bottom:16px;background:linear-gradient(135deg,rgba(196,88,36,.96),rgba(79,57,38,.94));color:#fffaf5}.hero p{max-width:780px;color:rgba(255,250,245,.88);line-height:1.65}
+    .actions,.stack,.chips{display:flex;gap:10px;flex-wrap:wrap}.button{display:inline-flex;align-items:center;justify-content:center;padding:12px 14px;border-radius:14px;background:#fff;color:#241b15;text-decoration:none;font-weight:700;border:1px solid rgba(255,255,255,.18)}
+    .button.primary{background:#2a221c;color:#fff4ea}.grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px}.card{padding:18px}.field{display:grid;gap:6px;margin-bottom:12px}.field label{font-size:13px;font-weight:700;color:var(--muted)}
+    input,select,textarea{width:100%;padding:11px 12px;border-radius:14px;border:1px solid var(--line);background:#fffdf8;font:inherit}pre{margin:0;padding:14px;border-radius:14px;background:#251d17;color:#f8ecdf;overflow:auto;font:12px/1.6 Consolas,monospace}
+    .endpoint{padding:14px;border-radius:18px;background:#fff;border:1px solid rgba(98,74,52,.08);display:grid;gap:8px}.endpoint header{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.method{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:800;font-size:12px;color:#fff}.GET{background:#2f7d32}.POST{background:#b45524}.PUT{background:#2364b4}.PATCH{background:#7f4db1}.DELETE{background:#a63b2a}
+    .path{font-family:Consolas,monospace;font-size:14px;word-break:break-all}.muted{color:var(--muted)}.pill{padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);font-size:13px}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.tiny{font-size:12px}.summary{line-height:1.6}
+    @media (max-width:980px){.grid,.two{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>Marketplace API Explorer</h1>
+      <p>Trang này đọc trực tiếp file OpenAPI của dự án, giúp bạn lọc endpoint theo nhóm và method, rồi đối chiếu nhanh với collection Postman. Nó không thay thế Swagger UI đầy đủ, nhưng đủ tốt để demo, onboarding và review phạm vi API trong repo hiện tại.</p>
+      <div class="actions">
+        <a class="button primary" href="/api-docs/openapi.json">OpenAPI JSON</a>
+        <a class="button" href="/api-docs/postman_collection.json">Postman Collection</a>
+        <a class="button" href="/">Marketplace</a>
+        <a class="button" href="/admin.html">Admin Console</a>
+      </div>
+      <div class="actions" style="margin-top:14px;">
+        <span class="pill">Base URL: http://localhost:3000</span>
+        <span class="pill">Auth: Bearer accessToken</span>
+        <span class="pill">Realtime: Socket.IO</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <aside class="card">
+        <div class="field">
+          <label for="searchInput">Tìm endpoint</label>
+          <input id="searchInput" placeholder="auth, products, conversations..." />
+        </div>
+        <div class="field">
+          <label for="methodFilter">Method</label>
+          <select id="methodFilter">
+            <option value="">Tất cả</option>
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="tagFilter">Tag</label>
+          <select id="tagFilter"><option value="">Tất cả</option></select>
+        </div>
+        <div class="two">
+          <div class="card" style="padding:14px;">
+            <strong id="endpointCount">0</strong>
+            <div class="muted tiny">endpoint đang hiển thị</div>
+          </div>
+          <div class="card" style="padding:14px;">
+            <strong id="tagCount">0</strong>
+            <div class="muted tiny">nhóm API</div>
+          </div>
+        </div>
+        <div class="card" style="padding:14px;margin-top:12px;">
+          <strong>Quick Notes</strong>
+          <ul class="summary">
+            <li>`/api/conversations` hiện hỗ trợ read receipt, edit message, revoke và xóa attachment.</li>
+            <li>`/api/uploads/*` dùng `multipart/form-data` với multer.</li>
+            <li>`/api/imports/chotot` dành cho import dữ liệu mẫu/demo.</li>
+          </ul>
+        </div>
+      </aside>
+
+      <section class="stack">
+        <article class="card">
+          <div class="two">
+            <div>
+              <h2 style="margin-top:0;">Endpoint Explorer</h2>
+              <div class="muted">Filter theo method, tag hoặc từ khóa để rà nhanh phạm vi API.</div>
+            </div>
+            <div>
+              <h2 style="margin-top:0;">Schemas</h2>
+              <div class="muted">Tóm tắt các request body chính từ OpenAPI hiện tại.</div>
+            </div>
+          </div>
+          <div class="two" style="margin-top:14px;align-items:start;">
+            <div id="endpointList" class="stack"></div>
+            <pre id="schemaPreview">Đang tải schema...</pre>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const endpointList = document.getElementById('endpointList');
+    const schemaPreview = document.getElementById('schemaPreview');
+    const searchInput = document.getElementById('searchInput');
+    const methodFilter = document.getElementById('methodFilter');
+    const tagFilter = document.getElementById('tagFilter');
+    const endpointCount = document.getElementById('endpointCount');
+    const tagCount = document.getElementById('tagCount');
+
+    const state = { endpoints: [], tags: [], schemas: {} };
+
+    const methodOrder = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+    const pretty = (value) => JSON.stringify(value, null, 2);
+
+    const renderSchemas = () => {
+      const important = ['LoginRequest', 'ProductCreateRequest', 'ConversationMessageRequest', 'AuctionBidRequest', 'EscrowActionRequest'];
+      const payload = important.reduce((acc, key) => {
+        if (state.schemas[key]) acc[key] = state.schemas[key];
+        return acc;
+      }, {});
+      schemaPreview.textContent = pretty(payload);
+    };
+
+    const renderEndpoints = () => {
+      const keyword = searchInput.value.trim().toLowerCase();
+      const method = methodFilter.value;
+      const tag = tagFilter.value;
+      const filtered = state.endpoints.filter((item) => {
+        if (method && item.method !== method) return false;
+        if (tag && item.tag !== tag) return false;
+        if (!keyword) return true;
+        return [item.path, item.summary, item.tag].join(' ').toLowerCase().includes(keyword);
+      });
+
+      endpointCount.textContent = filtered.length;
+      endpointList.innerHTML = filtered.map((item) => `
+        <article class="endpoint">
+          <header>
+            <span class="method ${item.method}">${item.method}</span>
+            <span class="pill" style="background:rgba(74,103,68,.08);border-color:rgba(74,103,68,.18);color:#2b4f2b;">${item.tag}</span>
+          </header>
+          <div class="path">${item.path}</div>
+          <div class="summary">${item.summary || 'No summary'}</div>
+          <div class="muted tiny">${item.secure ? 'Yêu cầu Bearer token' : 'Public endpoint'}</div>
+        </article>
+      `).join('');
+    };
+
+    const boot = async () => {
+      const openapi = await fetch('/api-docs/openapi.json').then((res) => res.json());
+      state.schemas = openapi.components?.schemas || {};
+      state.endpoints = Object.entries(openapi.paths || {}).flatMap(([path, config]) =>
+        Object.entries(config).map(([method, meta]) => ({
+          method: method.toUpperCase(),
+          path,
+          summary: meta.summary || '',
+          tag: meta.tags?.[0] || 'General',
+          secure: Boolean(meta.security?.length),
+        }))
+      ).sort((a, b) => methodOrder.indexOf(a.method) - methodOrder.indexOf(b.method) || a.path.localeCompare(b.path));
+      state.tags = [...new Set(state.endpoints.map((item) => item.tag))];
+      tagCount.textContent = state.tags.length;
+      tagFilter.innerHTML = ['<option value="">Tất cả</option>', ...state.tags.map((tag) => `<option value="${tag}">${tag}</option>`)].join('');
+      renderSchemas();
+      renderEndpoints();
+    };
+
+    [searchInput, methodFilter, tagFilter].forEach((element) => element.addEventListener('input', renderEndpoints));
+    boot().catch((error) => {
+      schemaPreview.textContent = `Không tải được OpenAPI: ${error.message}`;
+      endpointList.innerHTML = '<article class="endpoint">Lỗi tải dữ liệu API.</article>';
+    });
+  </script>
+</body>
+</html>
