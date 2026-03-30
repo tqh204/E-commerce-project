@@ -1,4 +1,4 @@
-const { RefreshToken, Role, User } = require('../schemas');
+const { RefreshToken, User } = require('../schemas');
 const {
   generateRefreshToken,
   getRefreshTokenExpiry,
@@ -8,14 +8,8 @@ const {
   verifyPassword,
 } = require('../lib/auth');
 const { asyncHandler, sendError, sendSuccess } = require('../lib/http');
-
-const ensureRole = async (name, description, permissions = []) => {
-  let role = await Role.findOne({ name });
-  if (!role) {
-    role = await Role.create({ name, description, permissions });
-  }
-  return role;
-};
+const { ensureSystemRoles } = require('../lib/roles');
+const { isStrongPassword, passwordRuleMessage } = require('../schemas/validators');
 
 const sanitizeUser = (user) => {
   const data = user.toObject({ virtuals: true });
@@ -57,6 +51,9 @@ exports.register = asyncHandler(async (req, res) => {
   if (!username || !email || !password || !fullName) {
     return sendError(res, 'username, email, password, fullName are required', 400);
   }
+  if (!isStrongPassword(password)) {
+    return sendError(res, passwordRuleMessage, 400);
+  }
 
   const existingUser = await User.findOne({
     $or: [{ email: email.toLowerCase() }, { username: username.toLowerCase() }],
@@ -65,18 +62,27 @@ exports.register = asyncHandler(async (req, res) => {
     return sendError(res, 'User already exists', 409);
   }
 
-  const buyerRole = await ensureRole('buyer', 'Default buyer role', [
-    'product:read',
-    'order:create',
-    'bid:create',
-    'chat:create',
-  ]);
-  const sellerRole = await ensureRole('seller', 'Default seller role', [
-    'product:create',
-    'product:update',
-    'order:read',
-    'auction:create',
-  ]);
+  const rolesByName = await ensureSystemRoles();
+  const requestedRoles = Array.isArray(req.body.roles)
+    ? req.body.roles
+    : req.body.role
+      ? [req.body.role]
+      : [];
+  const allowedSelfServiceRoles = new Set(['buyer', 'seller']);
+  const selectedRoleNames = [
+    ...new Set(
+      requestedRoles
+        .map((role) => `${role || ''}`.trim().toLowerCase())
+        .filter((role) => allowedSelfServiceRoles.has(role))
+    ),
+  ];
+  if (!selectedRoleNames.length) {
+    selectedRoleNames.push('buyer');
+  }
+
+  const selectedRoles = selectedRoleNames
+    .map((name) => rolesByName[name])
+    .filter(Boolean);
 
   const user = await User.create({
     username,
@@ -84,7 +90,7 @@ exports.register = asyncHandler(async (req, res) => {
     passwordHash: hashPassword(password),
     fullName,
     phone,
-    roles: [buyerRole._id, sellerRole._id],
+    roles: selectedRoles.map((role) => role._id),
   });
 
   const tokens = await issueTokens(user, req);

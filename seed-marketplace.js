@@ -53,16 +53,6 @@ async function seedMarketplace() {
       isActive: true,
     }
   );
-  const moderatorRole = await upsertOne(
-    Role,
-    { name: 'moderator' },
-    {
-      description: 'Can review and moderate content',
-      permissions: ['product:moderate', 'review:moderate', 'user:suspend'],
-      isActive: true,
-    }
-  );
-
   const admin = await upsertOne(
     User,
     { email: 'admin@example.com' },
@@ -71,7 +61,7 @@ async function seedMarketplace() {
       passwordHash: hashPassword('password123'),
       fullName: 'Marketplace Admin',
       phone: '+84901111111',
-      roles: [adminRole._id, moderatorRole._id],
+      roles: [adminRole._id],
       isVerified: true,
       isActive: true,
     }

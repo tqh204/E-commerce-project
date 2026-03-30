@@ -2,6 +2,7 @@ const PHONE_REGEX = /^(\+84|0)\d{8,10}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SLUG_REGEX = /^[a-z0-9-]+$/;
 const POSTAL_CODE_REGEX = /^\d{5,6}$/;
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
 
 const arrayLengthValidator = (min, max) => ({
   validator(value) {
@@ -64,6 +65,11 @@ const phoneValidator = {
   message: 'Phone number is invalid',
 };
 
+const passwordRuleMessage =
+  'Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.';
+
+const isStrongPassword = (value) => PASSWORD_REGEX.test(`${value || ''}`);
+
 const slugify = (value = '') =>
   value
     .toString()
@@ -106,20 +112,22 @@ const normalizeProductCondition = (value) => {
     like_new: 'like_new',
     good: 'good',
     fair: 'fair',
-    for_parts: 'for_parts',
-    unknown: 'unknown',
+    poor: 'poor',
+    for_parts: 'poor',
+    unknown: 'poor',
     'nhu moi': 'like_new',
     tot: 'good',
     'binh thuong': 'fair',
-    'co loi': 'for_parts',
+    'co loi': 'poor',
   };
 
-  return map[raw] || (value ? raw : 'unknown');
+  return map[raw] || (value ? raw : 'good');
 };
 
 const normalizeOrderStatus = (value) => {
   const raw = `${value || ''}`.trim().toLowerCase();
   const map = {
+    negotiating: 'negotiating',
     pending_payment: 'pending_payment',
     paid: 'paid',
     processing: 'processing',
@@ -128,6 +136,7 @@ const normalizeOrderStatus = (value) => {
     completed: 'completed',
     cancelled: 'cancelled',
     disputed: 'disputed',
+    'cho thuong luong': 'negotiating',
     'cho thanh toan': 'pending_payment',
     'cho gui hang': 'processing',
     'dang van chuyen': 'shipping',
@@ -137,7 +146,7 @@ const normalizeOrderStatus = (value) => {
     'tranh chap': 'disputed',
   };
 
-  return map[raw] || (value ? raw : 'pending_payment');
+  return map[raw] || (value ? raw : 'negotiating');
 };
 
 module.exports = {
@@ -145,11 +154,14 @@ module.exports = {
   EMAIL_REGEX,
   SLUG_REGEX,
   POSTAL_CODE_REGEX,
+  PASSWORD_REGEX,
   arrayLengthValidator,
   coordinatesValidator,
   urlValidator,
   emailValidator,
   phoneValidator,
+  passwordRuleMessage,
+  isStrongPassword,
   slugify,
   generateCode,
   normalizeProductStatus,

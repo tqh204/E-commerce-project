@@ -68,6 +68,71 @@ const syncMediaOwner = async ({ ownerType, ownerId, media }) => {
   }
 };
 
+const unsyncMediaOwner = async ({ ownerType, ownerId, media }) => {
+  if (ownerType === 'product') {
+    const product = await Product.findById(ownerId);
+    if (!product) {
+      return;
+    }
+
+    product.mediaIds = (product.mediaIds || []).filter((id) => String(id) !== String(media._id));
+    product.images = (product.images || []).filter((url) => url !== media.url);
+    if (product.thumbnailImage === media.url) {
+      product.thumbnailImage = product.images[0] || null;
+    }
+    await product.save();
+    return;
+  }
+
+  if (ownerType === 'user') {
+    const user = await User.findById(ownerId).select('avatarMedia avatarUrl');
+    if (!user) {
+      return;
+    }
+
+    const patch = {};
+    if (String(user.avatarMedia || '') === String(media._id)) {
+      patch.avatarMedia = null;
+    }
+    if (user.avatarUrl === media.url) {
+      patch.avatarUrl = '';
+    }
+    if (Object.keys(patch).length) {
+      await User.findByIdAndUpdate(ownerId, { $set: patch });
+    }
+    return;
+  }
+
+  if (ownerType === 'message') {
+    const message = await Message.findById(ownerId);
+    if (!message) {
+      return;
+    }
+
+    message.attachments = (message.attachments || []).filter(
+      (attachmentId) => String(attachmentId) !== String(media._id)
+    );
+    message.attachmentUrls = (message.attachmentUrls || []).filter((url) => url !== media.url);
+    if (!message.attachments.length && message.messageType === 'image') {
+      message.messageType = 'text';
+    }
+    await message.save();
+    return;
+  }
+
+  if (ownerType === 'category') {
+    const category = await Category.findById(ownerId);
+    if (!category) {
+      return;
+    }
+
+    if (category.image === media.url) {
+      category.image = '';
+      await category.save();
+    }
+  }
+};
+
 const emitMessageMediaUpdate = async (ownerType, ownerId) => {
   if (ownerType !== 'message') {
     return;
@@ -238,6 +303,8 @@ exports.deleteMedia = asyncHandler(async (req, res) => {
     }
   }
 
+  await unsyncMediaOwner({ ownerType: media.ownerType, ownerId: media.ownerId, media });
+  await emitMessageMediaUpdate(media.ownerType, media.ownerId);
   await media.deleteOne();
   return sendSuccess(res, { deleted: true });
 });

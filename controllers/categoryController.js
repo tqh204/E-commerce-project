@@ -1,4 +1,4 @@
-const { Category } = require('../schemas');
+const { Category, Product } = require('../schemas');
 const {
   asyncHandler,
   buildPaginationMeta,
@@ -19,15 +19,34 @@ exports.listCategories = asyncHandler(async (req, res) => {
   }
 
   const [categories, total] = await Promise.all([
-    Category.find(filter).sort({ sortOrder: 1, name: 1 }).skip(skip).limit(limit),
+    Category.find(filter)
+      .populate('parentCategory', 'name slug')
+      .sort({ sortOrder: 1, name: 1 })
+      .skip(skip)
+      .limit(limit),
     Category.countDocuments(filter),
   ]);
 
-  return sendSuccess(res, categories, buildPaginationMeta(page, limit, total));
+  const categoryIds = categories.map((category) => category._id);
+  const productCounts = categoryIds.length
+    ? await Product.aggregate([
+        { $match: { category: { $in: categoryIds } } },
+        { $group: { _id: '$category', total: { $sum: 1 } } },
+      ])
+    : [];
+  const productCountMap = new Map(
+    productCounts.map((item) => [String(item._id), item.total])
+  );
+  const categoriesWithCounts = categories.map((category) => ({
+    ...category.toObject(),
+    productCount: productCountMap.get(String(category._id)) || 0,
+  }));
+
+  return sendSuccess(res, categoriesWithCounts, buildPaginationMeta(page, limit, total));
 });
 
 exports.getCategoryById = asyncHandler(async (req, res) => {
-  const category = await Category.findById(req.params.id);
+  const category = await Category.findById(req.params.id).populate('parentCategory', 'name slug');
   if (!category) {
     return sendError(res, 'Category not found', 404);
   }
@@ -36,16 +55,23 @@ exports.getCategoryById = asyncHandler(async (req, res) => {
 });
 
 exports.createCategory = asyncHandler(async (req, res) => {
+  const parentCategory = req.body.parentCategory || req.body.parent_id || null;
+  if (parentCategory) {
+    const parent = await Category.findById(parentCategory);
+    if (!parent) {
+      return sendError(res, 'Parent category not found', 404);
+    }
+  }
   const category = await Category.create({
     name: req.body.name,
     slug: req.body.slug,
     description: req.body.description,
     icon: req.body.icon,
     image: req.body.image,
-    parentCategory: req.body.parentCategory,
+    parentCategory,
     level: req.body.level,
     sortOrder: req.body.sortOrder,
-    isActive: req.body.isActive,
+    isActive: req.body.isActive ?? req.body.is_active,
     source: req.body.source,
   });
 
@@ -58,6 +84,17 @@ exports.updateCategory = asyncHandler(async (req, res) => {
     return sendError(res, 'Category not found', 404);
   }
 
+  const parentCategory = req.body.parentCategory || req.body.parent_id;
+  if (parentCategory && String(parentCategory) === String(category._id)) {
+    return sendError(res, 'Category cannot be its own parent', 400);
+  }
+  if (parentCategory) {
+    const parent = await Category.findById(parentCategory);
+    if (!parent) {
+      return sendError(res, 'Parent category not found', 404);
+    }
+  }
+
   Object.assign(
     category,
     cleanObject({
@@ -66,10 +103,10 @@ exports.updateCategory = asyncHandler(async (req, res) => {
       description: req.body.description,
       icon: req.body.icon,
       image: req.body.image,
-      parentCategory: req.body.parentCategory,
+      parentCategory,
       level: req.body.level,
       sortOrder: req.body.sortOrder,
-      isActive: req.body.isActive,
+      isActive: req.body.isActive ?? req.body.is_active,
       source: req.body.source,
     })
   );
@@ -79,10 +116,25 @@ exports.updateCategory = asyncHandler(async (req, res) => {
 });
 
 exports.deleteCategory = asyncHandler(async (req, res) => {
-  const category = await Category.findByIdAndDelete(req.params.id);
+  const category = await Category.findById(req.params.id);
   if (!category) {
     return sendError(res, 'Category not found', 404);
   }
+
+  const [productCount, childCount] = await Promise.all([
+    Product.countDocuments({ category: category._id }),
+    Category.countDocuments({ parentCategory: category._id }),
+  ]);
+  if (productCount > 0 || childCount > 0) {
+    return sendError(
+      res,
+      'Category still has related products or subcategories',
+      409,
+      { productCount, childCount }
+    );
+  }
+
+  await category.deleteOne();
 
   return sendSuccess(res, { deleted: true });
 });

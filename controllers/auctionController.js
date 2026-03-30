@@ -174,6 +174,39 @@ exports.closeAuction = asyncHandler(async (req, res) => {
   return sendSuccess(res, result);
 });
 
+exports.openAuction = asyncHandler(async (req, res) => {
+  const auction = await Auction.findById(req.params.id);
+  if (!auction) {
+    return sendError(res, 'Auction not found', 404);
+  }
+
+  const isOwner = String(auction.seller) === String(req.user._id);
+  const isAdmin = (req.userRoles || []).includes('admin');
+  if (!isOwner && !isAdmin) {
+    return sendError(res, 'Forbidden', 403);
+  }
+
+  const now = new Date();
+  if (!auction.startAt || new Date(auction.startAt) > now) {
+    auction.startAt = now;
+  }
+  if (!auction.endAt || new Date(auction.endAt) <= now) {
+    auction.endAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  }
+  auction.status = 'live';
+  auction.currentBid = auction.currentBid || auction.startingBid;
+  await auction.save();
+
+  await Product.findByIdAndUpdate(auction.product, {
+    saleType: 'auction',
+    status: 'active',
+    startingBid: auction.startingBid,
+    currentBid: auction.currentBid,
+  });
+
+  return sendSuccess(res, auction);
+});
+
 exports.deleteAuction = asyncHandler(async (req, res) => {
   const auction = await Auction.findById(req.params.id);
   if (!auction) {

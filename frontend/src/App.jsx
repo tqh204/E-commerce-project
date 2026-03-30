@@ -1,16 +1,19 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import AuthPanel from './components/AuthPanel';
 import CatalogView from './components/CatalogView';
 import SellerStudio from './components/SellerStudio';
 import DashboardView from './components/DashboardView';
 import AdminView from './components/AdminView';
+import SellerStorePage from './components/SellerStorePage';
 import { api } from './utils/api';
 import { clearStoredToken, getStoredToken, setStoredToken } from './utils/auth';
 import { APP_NAV } from './utils/constants';
 import { useRealtimeChat } from './hooks/useRealtimeChat';
 
 const initialListing = {
-  categoryId: '', title: '', description: '', price: 0, saleType: 'fixed_price', condition: 'good', addressText: '', province: '', district: '', ward: '', tags: '', auctionStart: '', auctionEnd: '', startingBid: 0, bidStep: 500000, buyNowPrice: 0,
+  categoryId: '', title: '', description: '', price: 0, saleType: 'fixed_price',
+  condition: 'good', addressText: '', province: '', district: '', ward: '',
+  tags: '', auctionStart: '', auctionEnd: '', startingBid: 0, bidStep: 500000, buyNowPrice: 0,
 };
 
 const App = () => {
@@ -21,6 +24,7 @@ const App = () => {
   const [products, setProducts] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedAuction, setSelectedAuction] = useState(null);
+  const [relatedProducts, setRelatedProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [auctions, setAuctions] = useState([]);
   const [conversations, setConversations] = useState([]);
@@ -30,8 +34,12 @@ const App = () => {
   const [reviews, setReviews] = useState([]);
   const [users, setUsers] = useState([]);
   const [batches, setBatches] = useState([]);
-  const [notice, setNotice] = useState('React frontend dang dung chung backend Express hien tai.');
-  const [filters, setFilters] = useState({ q: '', saleType: '', source: '', categoryId: '' });
+  const [notice, setNotice] = useState('Chào mừng đến với Marketplace!');
+  const [filters, setFilters] = useState({ q: '', saleType: '', source: '', categoryId: '', minPrice: '', maxPrice: '' });
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [selectedSellerId, setSelectedSellerId] = useState(null);
   const [loginForm, setLoginForm] = useState({ identifier: 'admin@example.com', password: 'password123' });
   const [registerForm, setRegisterForm] = useState({ username: '', email: '', fullName: '', phone: '', password: '' });
   const [listingForm, setListingForm] = useState(initialListing);
@@ -55,14 +63,18 @@ const App = () => {
     });
   }, []);
 
-  const loadPublic = useCallback(async () => {
+  const loadPublic = useCallback(async (pageNum = 1, filterOverride = null) => {
+    const usedFilters = filterOverride || filters;
     const [categoriesPayload, productsPayload, auctionsPayload] = await Promise.all([
       api.categories(),
-      api.products({ status: 'active', ...filters }),
+      api.products({ status: 'active', ...usedFilters, page: pageNum }),
       api.auctions(),
     ]);
     setCategories(categoriesPayload.data || []);
     setProducts(productsPayload.data || []);
+    setTotalPages(productsPayload.meta?.totalPages || 1);
+    setTotal(productsPayload.meta?.total || 0);
+    setPage(pageNum);
     setAuctions(auctionsPayload.data || []);
   }, [filters]);
 
@@ -87,10 +99,7 @@ const App = () => {
 
   const restoreSession = useCallback(async () => {
     await loadPublic();
-    if (!token) {
-      setUser(null);
-      return;
-    }
+    if (!token) { setUser(null); return; }
     try {
       const mePayload = await api.me();
       setUser(mePayload.data);
@@ -112,10 +121,7 @@ const App = () => {
   }, [user, loadPrivate]);
 
   useEffect(() => {
-    if (!selectedProduct?._id) {
-      setSelectedAuction(null);
-      return;
-    }
+    if (!selectedProduct?._id) { setSelectedAuction(null); return; }
     setSelectedAuction(auctions.find((item) => String(item.product?._id || item.product) === String(selectedProduct._id)) || null);
   }, [auctions, selectedProduct]);
 
@@ -151,7 +157,7 @@ const App = () => {
     },
     onTyping: ({ conversationId, fullName, username, isTyping }) => {
       if (conversationId !== activeConversationId) return;
-      const label = fullName || username || 'Nguoi dung';
+      const label = fullName || username || 'Người dùng';
       setTypingNames((current) => {
         const set = new Set(current);
         if (isTyping) set.add(label); else set.delete(label);
@@ -168,7 +174,7 @@ const App = () => {
     setStoredToken(payload.data.accessToken);
     setToken(payload.data.accessToken);
     setUser(payload.data.user);
-    setNotice(`Da dang nhap voi ${payload.data.user.fullName}`);
+    setNotice(`Đã đăng nhập: ${payload.data.user.fullName}`);
   };
 
   const handleRegister = async (event) => {
@@ -177,7 +183,7 @@ const App = () => {
     setStoredToken(payload.data.accessToken);
     setToken(payload.data.accessToken);
     setUser(payload.data.user);
-    setNotice(`Da tao tai khoan ${payload.data.user.fullName}`);
+    setNotice(`Đã tạo tài khoản: ${payload.data.user.fullName}`);
   };
 
   const handleLogout = async () => {
@@ -186,12 +192,34 @@ const App = () => {
     setToken('');
     setUser(null);
     setOrders([]); setConversations([]); setEscrows([]); setReviews([]); setUsers([]); setMessages([]);
-    setNotice('Da dang xuat.');
+    setNotice('Đã đăng xuất.');
   };
 
   const loadProductDetail = async (productId) => {
+    if (!productId) { setSelectedProduct(null); setRelatedProducts([]); return; }
     const payload = await api.product(productId);
     setSelectedProduct(payload.data);
+    // Tải sản phẩm liên quan (cùng danh mục)
+    if (payload.data?.category?._id) {
+      const relPayload = await api.relatedProducts(payload.data.category._id, productId).catch(() => ({ data: [] }));
+      setRelatedProducts((relPayload.data || []).filter(p => p._id !== productId));
+    }
+  };
+
+  const handlePageChange = async (newPage) => {
+    setPage(newPage);
+    await loadPublic(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleApplyFilters = async () => {
+    setPage(1);
+    await loadPublic(1);
+  };
+
+  const handleViewStore = (sellerId) => {
+    setSelectedSellerId(sellerId);
+    setNav('seller-store');
   };
 
   const handleCreateListing = async (event) => {
@@ -226,31 +254,44 @@ const App = () => {
     }
     setListingForm(initialListing);
     setListingFile(null);
-    setNotice('Da tao listing React.');
+    setNotice('✅ Đã đăng tin thành công!');
     await loadPublic();
     await loadPrivate();
   };
 
   const handleCreateOrder = async () => {
     if (!selectedProduct || !user) return;
-    await api.createOrder({ productId: selectedProduct._id, quantity: 1, paymentType: 'escrow', shippingMethod: 'delivery', shippingFee: 30000, platformFee: 20000, shippingAddress: { fullName: user.fullName, phone: user.phone || '', province: selectedProduct.province || '', district: selectedProduct.district || '', ward: selectedProduct.ward || '', address: selectedProduct.addressText || '' } });
+    await api.createOrder({
+      productId: selectedProduct._id, quantity: 1, paymentType: 'escrow',
+      shippingMethod: 'delivery', shippingFee: 30000, platformFee: 20000,
+      shippingAddress: {
+        fullName: user.fullName, phone: user.phone || '',
+        province: selectedProduct.province || '', district: selectedProduct.district || '',
+        ward: selectedProduct.ward || '', address: selectedProduct.addressText || '',
+      },
+    });
     await loadPrivate();
-    setNotice('Da tao order tu React.');
+    setNotice('✅ Đặt hàng thành công!');
   };
 
   const handlePlaceBid = async () => {
     if (!selectedAuction) return;
-    const amount = Number(window.prompt('Nhap gia bid', selectedAuction.currentBid || selectedAuction.startingBid || 0));
+    const amount = Number(window.prompt('Nhập giá đặt (₫)', selectedAuction.currentBid || selectedAuction.startingBid || 0));
     if (!amount) return;
     await api.placeBid(selectedAuction._id, amount);
     await loadPublic();
     await loadPrivate();
-    setNotice('Da dat bid.');
+    setNotice('✅ Đã đặt giá thành công!');
   };
 
   const handleStartConversation = async () => {
     if (!selectedProduct || !user) return;
-    const payload = await api.createConversation({ productId: selectedProduct._id, otherUserId: selectedProduct.seller?._id || selectedProduct.seller, subject: `Hoi ve ${selectedProduct.title}`, initialMessage: 'Xin chao, san pham nay con khong?' });
+    const payload = await api.createConversation({
+      productId: selectedProduct._id,
+      otherUserId: selectedProduct.seller?._id || selectedProduct.seller,
+      subject: `Hỏi về ${selectedProduct.title}`,
+      initialMessage: 'Xin chào, sản phẩm này còn không?',
+    });
     mergeConversation(payload.data);
     setActiveConversationId(payload.data._id);
     await loadMessages(payload.data._id);
@@ -265,14 +306,14 @@ const App = () => {
   };
 
   const handleEditMessage = async (message) => {
-    const content = window.prompt('Sua message', message.content || '');
+    const content = window.prompt('Sửa tin nhắn', message.content || '');
     if (content === null) return;
     await api.editMessage(activeConversationId, message._id, { content });
   };
 
   const handleEscrowAction = async (escrowId, action) => {
-    const reason = window.prompt(`Nhap ly do cho ${action}`, `${action} from React app`) || '';
-    await api.updateEscrow(escrowId, action, { reason, notes: 'Updated from React frontend' });
+    const reason = window.prompt(`Nhập lý do cho "${action}"`, '') || '';
+    await api.updateEscrow(escrowId, action, { reason, notes: 'Cập nhật từ React frontend' });
     await loadPrivate();
   };
 
@@ -284,7 +325,7 @@ const App = () => {
   };
 
   const handleCreateCategory = async () => {
-    const name = window.prompt('Ten category');
+    const name = window.prompt('Tên danh mục');
     if (!name) return;
     const slug = window.prompt('Slug', name.toLowerCase().replace(/\s+/g, '-'));
     if (!slug) return;
@@ -300,20 +341,156 @@ const App = () => {
   return (
     <div className="react-shell">
       <aside className="react-sidebar">
-        <p className="eyebrow">ChoTot x eBay x Mercari</p>
-        <h1>Marketplace React</h1>
-        <p className="muted">`views` dung de chua man hinh. `utils` dung de chua API client, auth helper, constants, formatter va mapper.</p>
-        <nav className="nav-list">{APP_NAV.map((item) => <button key={item.id} className={nav === item.id ? 'nav-btn active' : 'nav-btn'} onClick={() => setNav(item.id)}>{item.label}</button>)}</nav>
+        <p className="eyebrow">ChoTot × eBay × Mercari</p>
+        <h1 style={{ fontSize: 20, fontWeight: 800, color: '#fff6ef' }}>Marketplace</h1>
+        <p className="muted" style={{ fontSize: 12, color: '#a08878' }}>
+          Nền tảng mua bán trực tuyến toàn diện
+        </p>
+        <nav className="nav-list">
+          {APP_NAV.map((item) => (
+            <button
+              key={item.id}
+              className={nav === item.id ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setNav(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
         <div className="notice">{notice}</div>
       </aside>
+
       <main className="react-main">
-        <section className="hero-panel"><div><p className="eyebrow">Frontend strategy</p><h2>React la lua chon hop ly nhat cho repo nay.</h2><p className="muted">Backend Express da on dinh, vi vay React la cach nhanh nhat de nang cap giao dien cho tung nhom chuc nang ma khong dap lai API.</p></div><div className="hero-actions"><a href="/">Marketplace cu</a><a href="/admin.html">Admin cu</a><a href="/docs.html">Docs Explorer</a></div></section>
-        <section className="grid-two"><AuthPanel user={user} loginForm={loginForm} registerForm={registerForm} onLoginChange={updateForm(setLoginForm)} onRegisterChange={updateForm(setRegisterForm)} onLogin={handleLogin} onRegister={handleRegister} onLogout={handleLogout} /></section>
-        {nav === 'catalog' && <CatalogView products={products} categories={categories} filters={filters} setFilters={setFilters} loadProducts={() => loadPublic().catch((error) => setNotice(error.message))} selectedProduct={selectedProduct} selectedAuction={selectedAuction} onSelectProduct={(id) => loadProductDetail(id).catch((error) => setNotice(error.message))} onCreateOrder={() => handleCreateOrder().catch((error) => setNotice(error.message))} onPlaceBid={() => handlePlaceBid().catch((error) => setNotice(error.message))} onStartConversation={() => handleStartConversation().catch((error) => setNotice(error.message))} user={user} />}
-        {nav === 'seller' && <SellerStudio categories={categories} listingForm={listingForm} setListingForm={setListingForm} setListingFile={setListingFile} onSubmit={(event) => handleCreateListing(event).catch((error) => setNotice(error.message))} />}
-        {nav === 'dashboard' && <DashboardView orders={orders} auctions={auctions} escrows={escrows} reviews={reviews} conversations={conversations} activeConversationId={activeConversationId} setActiveConversationId={setActiveConversationId} loadMessages={(id) => loadMessages(id).catch((error) => setNotice(error.message))} activeConversation={activeConversation} messages={messages} user={user} chatDraft={chatDraft} setChatDraft={setChatDraft} sendChat={(event) => sendChat(event).catch((error) => setNotice(error.message))} typingNames={typingNames} onEscrowAction={(id, action) => handleEscrowAction(id, action).catch((error) => setNotice(error.message))} onEditMessage={(message) => handleEditMessage(message).catch((error) => setNotice(error.message))} />}
-        {nav === 'admin' && <AdminView isAdmin={isAdmin} adminImport={adminImport} setAdminImport={setAdminImport} onImport={(event) => handleAdminImport(event).catch((error) => setNotice(error.message))} onCreateCategory={() => handleCreateCategory().catch((error) => setNotice(error.message))} users={users} products={products} batches={batches} onModerateProduct={(id, status) => handleModerateProduct(id, status).catch((error) => setNotice(error.message))} />}
-        {nav === 'docs' && <section className="panel docs-panel"><h3>Docs</h3><p className="muted">App React nay song song voi cac man hinh HTML cu. Ban co the xem docs API va import Postman tu day.</p><div className="hero-actions"><a href="/docs.html">Docs Explorer</a><a href="/api-docs/openapi.json">OpenAPI JSON</a><a href="/api-docs/postman_collection.json">Postman Collection</a></div></section>}
+        {/* Hero & Auth */}
+        <section className="hero-panel">
+          <div>
+            <p className="eyebrow">Nền tảng thương mại điện tử</p>
+            <h2 style={{ fontSize: 20, fontWeight: 800, margin: '4px 0' }}>
+              Mua bán dễ dàng, an toàn, nhanh chóng
+            </h2>
+            <p className="muted" style={{ fontSize: 13 }}>
+              Kết nối người mua và người bán trên toàn quốc
+            </p>
+          </div>
+          <div className="hero-actions">
+            <a href="/">Marketplace cũ</a>
+            <a href="/admin.html">Quản trị</a>
+            <a href="/docs.html">API Docs</a>
+          </div>
+        </section>
+
+        <section className="grid-two">
+          <AuthPanel
+            user={user}
+            loginForm={loginForm}
+            registerForm={registerForm}
+            onLoginChange={updateForm(setLoginForm)}
+            onRegisterChange={updateForm(setRegisterForm)}
+            onLogin={handleLogin}
+            onRegister={handleRegister}
+            onLogout={handleLogout}
+          />
+        </section>
+
+        {/* Views */}
+        {nav === 'catalog' && (
+          <CatalogView
+            products={products}
+            categories={categories}
+            filters={filters}
+            setFilters={setFilters}
+            loadProducts={() => handleApplyFilters().catch((e) => setNotice(e.message))}
+            selectedProduct={selectedProduct}
+            selectedAuction={selectedAuction}
+            relatedProducts={relatedProducts}
+            onSelectProduct={(id) => loadProductDetail(id).catch((e) => setNotice(e.message))}
+            onCreateOrder={() => handleCreateOrder().catch((e) => setNotice(e.message))}
+            onPlaceBid={() => handlePlaceBid().catch((e) => setNotice(e.message))}
+            onStartConversation={() => handleStartConversation().catch((e) => setNotice(e.message))}
+            onViewStore={handleViewStore}
+            user={user}
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            onPageChange={(p) => handlePageChange(p).catch((e) => setNotice(e.message))}
+          />
+        )}
+
+        {nav === 'seller' && (
+          <SellerStudio
+            categories={categories}
+            listingForm={listingForm}
+            setListingForm={setListingForm}
+            setListingFile={setListingFile}
+            onSubmit={(event) => handleCreateListing(event).catch((e) => setNotice(e.message))}
+          />
+        )}
+
+        {nav === 'dashboard' && (
+          <DashboardView
+            orders={orders}
+            auctions={auctions}
+            escrows={escrows}
+            reviews={reviews}
+            conversations={conversations}
+            activeConversationId={activeConversationId}
+            setActiveConversationId={setActiveConversationId}
+            loadMessages={(id) => loadMessages(id).catch((e) => setNotice(e.message))}
+            activeConversation={activeConversation}
+            messages={messages}
+            user={user}
+            chatDraft={chatDraft}
+            setChatDraft={setChatDraft}
+            sendChat={(event) => sendChat(event).catch((e) => setNotice(e.message))}
+            typingNames={typingNames}
+            onEscrowAction={(id, action) => handleEscrowAction(id, action).catch((e) => setNotice(e.message))}
+            onEditMessage={(message) => handleEditMessage(message).catch((e) => setNotice(e.message))}
+          />
+        )}
+
+        {nav === 'admin' && (
+          <AdminView
+            isAdmin={isAdmin}
+            adminImport={adminImport}
+            setAdminImport={setAdminImport}
+            onImport={(event) => handleAdminImport(event).catch((e) => setNotice(e.message))}
+            onCreateCategory={() => handleCreateCategory().catch((e) => setNotice(e.message))}
+            users={users}
+            products={products}
+            batches={batches}
+            onModerateProduct={(id, status) => handleModerateProduct(id, status).catch((e) => setNotice(e.message))}
+          />
+        )}
+
+        {nav === 'seller-store' && selectedSellerId && (
+          <SellerStorePage
+            sellerId={selectedSellerId}
+            user={user}
+            onSelectProduct={(id) => {
+              setNav('catalog');
+              loadProductDetail(id).catch((e) => setNotice(e.message));
+            }}
+            onBack={() => setNav('catalog')}
+            onStartConversation={(sellerId) => {
+              setNotice('Vui lòng chọn sản phẩm của người bán để bắt đầu chat.');
+              setNav('catalog');
+            }}
+          />
+        )}
+
+        {nav === 'docs' && (
+          <section className="panel docs-panel">
+            <h3>📄 Tài liệu API</h3>
+            <p className="muted" style={{ marginTop: 8 }}>
+              Xem tài liệu API và import Postman collection từ đây.
+            </p>
+            <div className="hero-actions" style={{ marginTop: 14 }}>
+              <a href="/docs.html">Docs Explorer</a>
+              <a href="/api-docs/openapi.json">OpenAPI JSON</a>
+              <a href="/api-docs/postman_collection.json">Postman Collection</a>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

@@ -6,6 +6,7 @@ import ProductDetailPage from './features/marketplace/ProductDetailPage';
 import SellerStorePage from './features/marketplace/SellerStorePage';
 import AuctionDetailPage from './features/marketplace/AuctionDetailPage';
 import AccountPage from './features/account/AccountPage';
+import OrdersPage from './features/account/OrdersPage';
 import OrderDetailPage from './features/account/OrderDetailPage';
 import EscrowDetailPage from './features/account/EscrowDetailPage';
 import MessagesPage from './features/chat/MessagesPage';
@@ -20,34 +21,95 @@ import AdminProductsPage from './features/admin/AdminProductsPage';
 import AdminOrdersPage from './features/admin/AdminOrdersPage';
 import AdminImportsPage from './features/admin/AdminImportsPage';
 import AdminProductFormPage from './features/admin/AdminProductFormPage';
-import UploadLabPage from './features/upload/UploadLabPage';
 import DocsPage from './features/docs/DocsPage';
 import SectionCard from './shared/SectionCard';
 import AppLink from './shared/AppLink';
 import { api } from '@frontend-utils/api';
-import { clearStoredToken, getStoredToken, setStoredToken } from '@frontend-utils/auth';
+import {
+  clearRememberedIdentifier,
+  clearStoredToken,
+  getRememberedIdentifier,
+  getStoredToken,
+  setRememberedIdentifier,
+  setStoredToken,
+} from '@frontend-utils/auth';
 import { normalizeTags, roleNames } from '@frontend-utils/format';
 import { matchPath, navigateTo } from '@frontend-utils/router';
 import { useRealtimeChat } from '@frontend-utils/useRealtimeChat';
 
+const PASSWORD_RULE_TEXT =
+  'Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.';
+const isStrongPassword = (value = '') =>
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(value);
+const USERNAME_RULE = /^[a-z0-9_-]{3,30}$/i;
+const PHONE_RULE = /^(\+84|0)\d{8,10}$/;
+const toSlug = (value = '') =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+const createLoginForm = (identifier = getRememberedIdentifier()) => ({
+  identifier,
+  password: '',
+});
+const createRegisterForm = () => ({
+  username: '',
+  email: '',
+  fullName: '',
+  phone: '',
+  password: '',
+  confirmPassword: '',
+  roles: ['buyer'],
+});
+const createAddressForm = (user = null) => ({
+  label: 'home',
+  fullName: user?.fullName || '',
+  phone: user?.phone || '',
+  province: '',
+  district: '',
+  ward: '',
+  street: '',
+  fullAddress: '',
+  postalCode: '',
+  isDefault: false,
+});
+const mapAddressToOrderShipping = (address) => ({
+  fullName: address?.fullName || '',
+  phone: address?.phone || '',
+  province: address?.province || '',
+  district: address?.district || '',
+  ward: address?.ward || '',
+  address: address?.fullAddress || address?.address || address?.street || '',
+  city: address?.city || address?.province || '',
+  zipCode: address?.postalCode || address?.zipCode || '',
+});
+
 const empty = {
-  filters: { q: '', categoryId: '', saleType: '', source: '', minPrice: '', maxPrice: '', sort: '' },
-  login: { identifier: 'admin@example.com', password: 'password123' },
-  register: { username: '', email: '', fullName: '', phone: '', password: '' },
+  filters: { q: '', categoryId: '', saleType: '', minPrice: '', maxPrice: '', sort: '' },
   product: {
     categoryId: '',
     title: '',
-    description: 'San pham moi duoc tao tu frontend React.',
+    description: 'Sản phẩm mới được tạo từ frontend React.',
     saleType: 'fixed_price',
     price: '100000',
+    inventory: '1',
     condition: 'good',
     status: 'active',
+    isNegotiable: false,
     fulfillmentType: 'both',
     addressText: '',
+    region: '',
+    city: '',
     province: '',
     district: '',
     ward: '',
     tags: '',
+    images: [],
+    thumbnailImage: '',
   },
   auction: {
     id: '',
@@ -56,27 +118,23 @@ const empty = {
     endAt: '',
     startingBid: '100000',
     currentBid: '',
-    reservePrice: '',
-    buyNowPrice: '',
     bidStep: '10000',
     status: 'scheduled',
   },
-  profile: { fullName: '', phone: '', avatarUrl: '', bio: '' },
-  address: {
-    label: '',
-    fullName: '',
-    phone: '',
-    province: '',
-    district: '',
-    ward: '',
-    street: '',
-    fullAddress: '',
-    postalCode: '',
-    isDefault: false,
-  },
+  profile: { fullName: '', phone: '', avatarUrl: '', bio: '', roles: ['buyer'] },
+  address: createAddressForm(),
   review: { orderId: '', score: '5', comment: '', isVisible: true },
   upload: { ownerType: 'product', ownerId: '', remoteUrl: '' },
-  category: { name: '', slug: '', description: '', sortOrder: '0', isActive: true },
+  category: {
+    name: '',
+    slug: '',
+    description: '',
+    icon: '',
+    parentCategory: '',
+    sortOrder: '0',
+    isActive: true,
+    source: 'manual',
+  },
   importForm: {
     categoryUrl: 'https://xe.chotot.com/',
     categoryName: 'Vehicles',
@@ -97,20 +155,30 @@ const toLocal = (value) =>
     : '';
 const uploads = (payload) =>
   Array.isArray(payload?.data) ? payload.data : payload?.data ? [payload.data] : [];
+const hasAnyUserRole = (member, allowedRoles = []) => {
+  const roleSet = new Set((member?.roles || []).map((role) => role?.name || role));
+  return allowedRoles.some((role) => roleSet.has(role));
+};
 const mapProductToForm = (product) => ({
   categoryId: product.category?._id || product.category || '',
   title: product.title || '',
   description: product.description || '',
   saleType: product.saleType || 'fixed_price',
   price: String(product.price || ''),
+  inventory: String(product.inventory ?? 1),
   condition: product.condition || 'good',
   status: product.status || 'active',
+  isNegotiable: Boolean(product.isNegotiable ?? product.negotiable),
   fulfillmentType: product.fulfillmentType || 'both',
   addressText: product.addressText || '',
-  province: product.province || '',
+  region: product.region || product.province || '',
+  city: product.city || product.province || '',
+  province: product.province || product.city || '',
   district: product.district || '',
   ward: product.ward || '',
   tags: (product.tags || []).join(', '),
+  images: product.images || [],
+  thumbnailImage: product.thumbnailImage || '',
 });
 const mapAuctionToForm = (auction) => ({
   id: auction._id,
@@ -119,8 +187,6 @@ const mapAuctionToForm = (auction) => ({
   endAt: toLocal(auction.endAt),
   startingBid: String(auction.startingBid || ''),
   currentBid: String(auction.currentBid || ''),
-  reservePrice: String(auction.reservePrice || ''),
-  buyNowPrice: String(auction.buyNowPrice || ''),
   bidStep: String(auction.bidStep || '10000'),
   status: auction.status || 'scheduled',
 });
@@ -129,6 +195,7 @@ const mapProfileToForm = (member) => ({
   phone: member?.phone || '',
   avatarUrl: member?.avatarUrl || '',
   bio: member?.bio || '',
+  roles: (member?.roles || []).map((role) => role?.name || role).filter((role) => ['buyer', 'seller'].includes(role)),
 });
 const toNumber = (value) => {
   if (value === '' || value === null || value === undefined) return undefined;
@@ -143,7 +210,7 @@ const readAsBase64 = (file) =>
     }
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Khong the doc file base64.'));
+    reader.onerror = () => reject(new Error('Không thể đọc file base64.'));
     reader.readAsDataURL(file);
   });
 
@@ -154,7 +221,6 @@ const parseCatalogSearch = (search = '') => {
       q: params.get('q') || '',
       categoryId: params.get('categoryId') || '',
       saleType: params.get('saleType') || '',
-      source: params.get('source') || '',
       minPrice: params.get('minPrice') || '',
       maxPrice: params.get('maxPrice') || '',
       sort: params.get('sort') || '',
@@ -188,15 +254,20 @@ const App = () => {
   const [token, setToken] = useState(() => getStoredToken());
   const [user, setUser] = useState(null);
   const [notice, setNotice] = useState(
-    'Frontend React dang duoc to chuc theo tung folder chuc nang: auth, marketplace, account, chat, seller, admin, upload, docs.'
+    'Frontend React đang được tổ chức theo từng nhóm chức năng: auth, marketplace, account, chat, seller, admin, upload, docs.'
   );
   const [filters, setFilters] = useState(initialCatalogState.filters);
   const [catalogPage, setCatalogPage] = useState(initialCatalogState.page);
   const [catalogMeta, setCatalogMeta] = useState(null);
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
-  const [loginForm, setLoginForm] = useState(empty.login);
-  const [registerForm, setRegisterForm] = useState(empty.register);
+  const [loginForm, setLoginForm] = useState(() => createLoginForm());
+  const [registerForm, setRegisterForm] = useState(() => createRegisterForm());
+  const [rememberAccount, setRememberAccount] = useState(() => Boolean(getRememberedIdentifier()));
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
   const [categories, setCategories] = useState([]);
+  const [adminCategories, setAdminCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [adminProducts, setAdminProducts] = useState([]);
   const [auctions, setAuctions] = useState([]);
@@ -206,9 +277,10 @@ const App = () => {
   const [sellerProducts, setSellerProducts] = useState([]);
   const [productForm, setProductForm] = useState(empty.product);
   const [editingProductId, setEditingProductId] = useState('');
-  const [productFile, setProductFile] = useState(null);
+  const [productFiles, setProductFiles] = useState([]);
   const [auctionForm, setAuctionForm] = useState(empty.auction);
   const [orders, setOrders] = useState([]);
+  const [adminOrders, setAdminOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [escrows, setEscrows] = useState([]);
   const [selectedEscrow, setSelectedEscrow] = useState(null);
@@ -217,6 +289,7 @@ const App = () => {
   const [addresses, setAddresses] = useState([]);
   const [addressForm, setAddressForm] = useState(empty.address);
   const [addressEditId, setAddressEditId] = useState('');
+  const [pendingCheckoutProductId, setPendingCheckoutProductId] = useState('');
   const [reviewForm, setReviewForm] = useState(empty.review);
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState('');
@@ -239,10 +312,24 @@ const App = () => {
   const [sellerStoreTab, setSellerStoreTab] = useState(initialSellerStoreTab);
   const [isSellerStoreLoading, setIsSellerStoreLoading] = useState(false);
   const [selectedAuctionDetail, setSelectedAuctionDetail] = useState(null);
+  const [bidDialog, setBidDialog] = useState({
+    open: false,
+    auctionId: '',
+    title: '',
+    currentBid: 0,
+    bidStep: 10000,
+    amount: '',
+  });
   const typingRef = useRef(null);
 
   const fail = useCallback((error) => {
-    setNotice(error?.message || 'Co loi xay ra trong frontend React.');
+    const message = error?.message || 'Co loi xay ra trong frontend React.';
+    if (/session expired|authentication required|token expired|invalid token/i.test(message)) {
+      clearStoredToken();
+      setToken('');
+      setUser(null);
+    }
+    setNotice(message);
   }, []);
 
   const run = useCallback(
@@ -259,10 +346,8 @@ const App = () => {
     [fail]
   );
 
-  const isAdmin = useMemo(
-    () => (user?.roles || []).some((role) => ['admin', 'moderator'].includes(role?.name || role)),
-    [user]
-  );
+  const isAdmin = useMemo(() => hasAnyUserRole(user, ['admin']), [user]);
+  const canSell = useMemo(() => hasAnyUserRole(user, ['seller', 'admin']), [user]);
   const activeConversation = useMemo(
     () => conversations.find((item) => item._id === activeConversationId) || null,
     [conversations, activeConversationId]
@@ -296,20 +381,28 @@ const App = () => {
     matchPath('/admin/products/:productId/edit', pathname) ||
     matchPath('/admin/product/:productId/edit', pathname);
   const editRoute = sellerEditRoute || adminEditRoute;
+  const routeProductId = productRoute?.productId || '';
+  const routeAuctionId = auctionRoute?.auctionId || '';
+  const routeSellerUserId = sellerStoreRoute?.userId || '';
+  const routeOrderId = orderRoute?.orderId || '';
+  const routeEscrowId = escrowRoute?.escrowId || '';
+  const routeConversationId = messageRoute?.conversationId || '';
+  const routeEditProductId = editRoute?.productId || '';
 
-  const messagesRoute = pathname === '/messages' || !!messageRoute;
+  const messagesRoute = pathname === '/messages' || Boolean(routeConversationId);
   const accountRoute = pathname === '/account';
-  const uploadRoute = pathname === '/upload-lab';
+  const ordersRoute = pathname === '/orders' || Boolean(routeOrderId);
   const adminRoute = pathname.startsWith('/admin');
   const docsRoute = pathname === '/docs';
-  const homeRoute = pathname === '/' || !!productRoute;
+  const homeRoute = pathname === '/' || Boolean(routeProductId);
   const sellerRoute = pathname.startsWith('/sell');
-  const headerSearchVisible = homeRoute || pathname === '/messages' || pathname === '/account';
+  const headerSearchVisible =
+    homeRoute || pathname === '/messages' || pathname === '/account' || pathname === '/orders';
 
   const resetProductForm = useCallback(() => {
     setProductForm(empty.product);
     setEditingProductId('');
-    setProductFile(null);
+    setProductFiles([]);
   }, []);
 
   const resetAuctionForm = useCallback(() => {
@@ -317,13 +410,47 @@ const App = () => {
   }, []);
 
   const resetAddressForm = useCallback(() => {
-    setAddressForm(empty.address);
+    setAddressForm(createAddressForm(user));
     setAddressEditId('');
+  }, [user]);
+
+  const focusAddressSection = useCallback(() => {
+    window.setTimeout(() => {
+      document.getElementById('dia-chi-giao-hang')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 80);
   }, []);
 
   const resetCategoryForm = useCallback(() => {
     setCategoryForm(empty.category);
     setCategoryEditId('');
+  }, []);
+
+  const closeBidDialog = useCallback(() => {
+    setBidDialog({
+      open: false,
+      auctionId: '',
+      title: '',
+      currentBid: 0,
+      bidStep: 10000,
+      amount: '',
+    });
+  }, []);
+
+  const openBidDialog = useCallback((auction, title = '') => {
+    if (!auction?._id) return;
+    const currentBid = Number(auction.currentBid || auction.startingBid || 0);
+    const bidStep = Number(auction.bidStep || 10000);
+    setBidDialog({
+      open: true,
+      auctionId: auction._id,
+      title: title || auction.product?.title || 'Phiên đấu giá',
+      currentBid,
+      bidStep,
+      amount: String(currentBid + bidStep),
+    });
   }, []);
 
   const loadPublic = useCallback(async () => {
@@ -356,24 +483,32 @@ const App = () => {
     if (!token) {
       setAddresses([]);
       setOrders([]);
+      setAdminOrders([]);
       setEscrows([]);
       setReviews([]);
       setConversations([]);
       return;
     }
-    const [addressesPayload, ordersPayload, escrowsPayload, reviewsPayload, conversationsPayload] =
-      await Promise.all([
+    const [addressesPayload, ordersPayload, reviewsPayload, conversationsPayload] =
+      await Promise.allSettled([
         api.addresses(),
-        api.orders(),
-        api.escrows(),
+        api.orders({ scope: 'mine' }),
         api.reviews(),
         api.conversations(),
       ]);
-    setAddresses(addressesPayload.data || []);
-    setOrders(ordersPayload.data || []);
-    setEscrows(escrowsPayload.data || []);
-    setReviews(reviewsPayload.data || []);
-    setConversations(conversationsPayload.data || []);
+
+    if (addressesPayload.status === 'fulfilled') {
+      setAddresses(addressesPayload.value.data || []);
+    }
+    if (ordersPayload.status === 'fulfilled') {
+      setOrders(ordersPayload.value.data || []);
+    }
+    if (reviewsPayload.status === 'fulfilled') {
+      setReviews(reviewsPayload.value.data || []);
+    }
+    if (conversationsPayload.status === 'fulfilled') {
+      setConversations(conversationsPayload.value.data || []);
+    }
   }, [token]);
 
   const loadAdmin = useCallback(async () => {
@@ -381,16 +516,22 @@ const App = () => {
       setUsers([]);
       setImportBatches([]);
       setAdminProducts([]);
+      setAdminCategories([]);
+      setAdminOrders([]);
       return;
     }
-    const [usersPayload, importPayload, productsPayload] = await Promise.all([
-      api.users(),
+    const [importPayload, productsPayload, usersPayload, categoriesPayload, ordersPayload] = await Promise.all([
       api.importBatches(),
       api.products({ limit: 80 }),
+      api.users(),
+      api.categories({}),
+      api.orders({ scope: 'all' }),
     ]);
     setUsers(usersPayload.data || []);
     setImportBatches(importPayload.data || []);
     setAdminProducts(productsPayload.data || []);
+    setAdminCategories(categoriesPayload.data || []);
+    setAdminOrders(ordersPayload.data || []);
   }, [isAdmin]);
 
   const refreshAll = useCallback(async () => {
@@ -476,6 +617,12 @@ const App = () => {
   }, [loadPublic, run]);
 
   useEffect(() => {
+    if (!rememberAccount) {
+      clearRememberedIdentifier();
+    }
+  }, [rememberAccount]);
+
+  useEffect(() => {
     if (!token) {
       setUser(null);
       setProfileForm(empty.profile);
@@ -496,54 +643,63 @@ const App = () => {
   }, [loadAdmin, loadPrivate, loadSellerProducts, run, user]);
 
   useEffect(() => {
-    if (!productRoute?.productId) {
+    if (!user || addressEditId) return;
+    setAddressForm((current) => ({
+      ...current,
+      fullName: user.fullName || '',
+      phone: user.phone || '',
+    }));
+  }, [addressEditId, user]);
+
+  useEffect(() => {
+    if (!routeProductId) {
       if (pathname === '/') {
         setSelectedProduct(null);
         setSelectedProductReviews([]);
       }
       return;
     }
-    run(() => loadProductDetail(productRoute.productId));
-  }, [loadProductDetail, pathname, productRoute, run]);
+    run(() => loadProductDetail(routeProductId));
+  }, [loadProductDetail, pathname, routeProductId, run]);
 
   useEffect(() => {
-    if (!sellerStoreRoute?.userId) {
+    if (!routeSellerUserId) {
       setSellerProfile(null);
       setSellerStoreProducts([]);
       setSellerStoreMeta(null);
       return;
     }
-    run(() => loadSellerStore(sellerStoreRoute.userId));
-  }, [loadSellerStore, run, sellerStoreRoute, sellerStoreTab]);
+    run(() => loadSellerStore(routeSellerUserId));
+  }, [loadSellerStore, routeSellerUserId, run, sellerStoreTab]);
 
   useEffect(() => {
-    if (!orderRoute?.orderId) {
-      if (pathname !== '/account') setSelectedOrder(null);
+    if (!routeOrderId) {
+      if (pathname !== '/account' && pathname !== '/orders') setSelectedOrder(null);
       return;
     }
     if (!token) return;
-    run(() => loadOrderDetail(orderRoute.orderId));
-  }, [loadOrderDetail, orderRoute, pathname, run, token]);
+    run(() => loadOrderDetail(routeOrderId));
+  }, [loadOrderDetail, pathname, routeOrderId, run, token]);
 
   useEffect(() => {
-    if (!escrowRoute?.escrowId) {
+    if (!routeEscrowId) {
       setSelectedEscrow(null);
       return;
     }
     if (!token) return;
-    run(() => loadEscrowDetail(escrowRoute.escrowId));
-  }, [escrowRoute, loadEscrowDetail, run, token]);
+    run(() => loadEscrowDetail(routeEscrowId));
+  }, [loadEscrowDetail, routeEscrowId, run, token]);
 
   useEffect(() => {
-    if (!auctionRoute?.auctionId) {
+    if (!routeAuctionId) {
       setSelectedAuctionDetail(null);
       return;
     }
-    run(() => loadAuctionDetail(auctionRoute.auctionId));
-  }, [auctionRoute, loadAuctionDetail, run]);
+    run(() => loadAuctionDetail(routeAuctionId));
+  }, [loadAuctionDetail, routeAuctionId, run]);
 
   useEffect(() => {
-    if (!messageRoute?.conversationId) {
+    if (!routeConversationId) {
       if (pathname === '/messages') {
         setActiveConversationId('');
         setMessages([]);
@@ -551,10 +707,10 @@ const App = () => {
       }
       return;
     }
-    if (activeConversationId !== messageRoute.conversationId) {
-      setActiveConversationId(messageRoute.conversationId);
+    if (activeConversationId !== routeConversationId) {
+      setActiveConversationId(routeConversationId);
     }
-  }, [activeConversationId, messageRoute, pathname]);
+  }, [activeConversationId, pathname, routeConversationId]);
 
   useEffect(() => {
     if (!activeConversationId || !token) return;
@@ -573,9 +729,9 @@ const App = () => {
   }, [auctions, selectedProduct]);
 
   useEffect(() => {
-    if (editRoute?.productId) {
+    if (routeEditProductId) {
       run(async () => {
-        const payload = await api.product(editRoute.productId);
+        const payload = await api.product(routeEditProductId);
         setEditingProductId(payload.data?._id || '');
         setProductForm(mapProductToForm(payload.data || {}));
       });
@@ -588,7 +744,7 @@ const App = () => {
     ) {
       resetProductForm();
     }
-  }, [editRoute, pathname, resetProductForm, run]);
+  }, [pathname, resetProductForm, routeEditProductId, run]);
 
   useEffect(() => {
     setTypingNames([]);
@@ -626,7 +782,7 @@ const App = () => {
     },
     onTyping: ({ conversationId, fullName, username, isTyping, userId }) => {
       if (conversationId !== activeConversationId || String(userId) === String(user?._id)) return;
-      const label = fullName || username || 'Nguoi dung';
+      const label = fullName || username || 'Người dùng';
       setTypingNames((current) => {
         const next = new Set(current);
         if (isTyping) next.add(label);
@@ -680,12 +836,12 @@ const App = () => {
   const handleSellerStoreTabChange = useCallback(
     (tab) => {
       setSellerStoreTab(tab);
-      if (sellerStoreRoute?.userId) {
+      if (routeSellerUserId) {
         const query = tab === 'active' ? '' : `?tab=${tab}`;
-        navigateTo(`/users/${sellerStoreRoute.userId}${query}`);
+        navigateTo(`/users/${routeSellerUserId}${query}`);
       }
     },
-    [sellerStoreRoute]
+    [routeSellerUserId]
   );
 
   const handleHeaderSearch = useCallback(
@@ -701,27 +857,76 @@ const App = () => {
   const handleLogin = useCallback(
     async (event) => {
       event.preventDefault();
-      const payload = await api.login(loginForm);
+      const identifier = `${loginForm.identifier || ''}`.trim();
+      if (!identifier || !loginForm.password) {
+        setNotice('Vui long nhap tai khoan va mat khau.');
+        return;
+      }
+      const payload = await api.login({ identifier, password: loginForm.password });
+      if (rememberAccount) {
+        setRememberedIdentifier(identifier);
+      } else {
+        clearRememberedIdentifier();
+      }
       setStoredToken(payload.data.accessToken);
       setToken(payload.data.accessToken);
       setUser(payload.data.user);
       setProfileForm(mapProfileToForm(payload.data.user));
+      setLoginForm(createLoginForm(identifier));
+      setShowLoginPassword(false);
       navigateTo('/');
-      setNotice(`Da dang nhap voi ${payload.data.user.fullName || payload.data.user.username}.`);
+      setNotice(`Đã đăng nhập với ${payload.data.user.fullName || payload.data.user.username}.`);
     },
-    [loginForm]
+    [loginForm, rememberAccount]
   );
 
   const handleRegister = useCallback(
     async (event) => {
       event.preventDefault();
-      const payload = await api.register(registerForm);
+      const username = `${registerForm.username || ''}`.trim();
+      const email = `${registerForm.email || ''}`.trim();
+      const fullName = `${registerForm.fullName || ''}`.trim();
+      const phone = `${registerForm.phone || ''}`.trim();
+      const password = `${registerForm.password || ''}`;
+      const confirmPassword = `${registerForm.confirmPassword || ''}`;
+      if (!username || !email || !fullName || !password || !confirmPassword) {
+        setNotice('Vui long nhap du username, email, ho ten va hai muc mat khau.');
+        return;
+      }
+      if (!USERNAME_RULE.test(username)) {
+        setNotice('Username chi nen gom chu, so, gach duoi hoac gach ngang.');
+        return;
+      }
+      if (phone && !PHONE_RULE.test(phone)) {
+        setNotice('So dien thoai chua dung dinh dang.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setNotice('Mat khau nhap lai chua khop.');
+        return;
+      }
+      if (!isStrongPassword(password)) {
+        setNotice(PASSWORD_RULE_TEXT);
+        return;
+      }
+      const payload = await api.register({
+        username,
+        email,
+        fullName,
+        phone,
+        password,
+        roles: registerForm.roles,
+      });
       setStoredToken(payload.data.accessToken);
       setToken(payload.data.accessToken);
       setUser(payload.data.user);
       setProfileForm(mapProfileToForm(payload.data.user));
+      setRegisterForm(createRegisterForm());
+      setShowRegisterPassword(false);
+      setShowRegisterConfirmPassword(false);
+      setLoginForm(createLoginForm(email || username));
       navigateTo('/');
-      setNotice(`Da tao tai khoan ${payload.data.user.fullName || payload.data.user.username}.`);
+      setNotice(`Đã tạo tài khoản ${payload.data.user.fullName || payload.data.user.username}.`);
     },
     [registerForm]
   );
@@ -731,47 +936,114 @@ const App = () => {
     clearStoredToken();
     setToken('');
     setUser(null);
+    setLoginForm(createLoginForm());
+    setRememberAccount(Boolean(getRememberedIdentifier()));
+    setShowLoginPassword(false);
     setSelectedOrder(null);
     setSelectedBatch(null);
     setReplyTo(null);
     setMessages([]);
     navigateTo('/');
-    setNotice('Da dang xuat.');
+    setNotice('Đã đăng xuất.');
   }, []);
 
   const handleSaveProfile = useCallback(
     async (event) => {
       event.preventDefault();
-      if (!user?._id) return;
-      const payload = await api.updateUser(user._id, profileForm);
+      const payload = await api.updateMyProfile(profileForm);
       setUser(payload.data);
       setProfileForm(mapProfileToForm(payload.data));
-      setNotice('Da cap nhat profile.');
+      setNotice('Đã cập nhật hồ sơ.');
     },
-    [profileForm, user]
+    [profileForm]
   );
 
   const handleSaveAddress = useCallback(
     async (event) => {
       event.preventDefault();
       if (!user?._id) return;
+      const fullName = `${addressForm.fullName || ''}`.trim();
+      const phone = `${addressForm.phone || ''}`.trim();
+      const province = `${addressForm.province || ''}`.trim();
+      const district = `${addressForm.district || ''}`.trim();
+      const ward = `${addressForm.ward || ''}`.trim();
+      const street = `${addressForm.street || ''}`.trim();
+      const fullAddress = [street, ward, district, province].filter(Boolean).join(', ');
+      if (!fullName || !phone || !province || !district || !street) {
+        setNotice('Vui long nhap nguoi nhan, so dien thoai, tinh/thanh, quan/huyen va dia chi chi tiet.');
+        return;
+      }
+      if (!PHONE_RULE.test(phone)) {
+        setNotice('So dien thoai chua dung dinh dang.');
+        return;
+      }
+      const payload = {
+        ...addressForm,
+        label: addressForm.label || 'home',
+        fullName,
+        phone,
+        province,
+        district,
+        ward,
+        street,
+        fullAddress,
+        postalCode: '',
+      };
+      let savedAddress = null;
       if (addressEditId) {
-        await api.updateAddress(addressEditId, addressForm);
-        setNotice('Da cap nhat dia chi.');
+        const response = await api.updateAddress(addressEditId, payload);
+        savedAddress = response.data || { _id: addressEditId, ...payload };
+        setNotice('Đã cập nhật địa chỉ.');
       } else {
-        await api.createAddress(addressForm);
-        setNotice('Da tao dia chi moi.');
+        const response = await api.createAddress(payload);
+        savedAddress = response.data || payload;
+        setNotice('Đã tạo địa chỉ mới.');
       }
       resetAddressForm();
       await loadPrivate();
+      if (pendingCheckoutProductId && savedAddress) {
+        const orderResponse = await api.createOrder({
+          productId: pendingCheckoutProductId,
+          quantity: 1,
+          paymentType: 'cod',
+          shippingMethod: 'delivery',
+          shippingFee: 30000,
+          platformFee: 20000,
+          shippingAddressId: savedAddress._id,
+          shippingAddress: mapAddressToOrderShipping(savedAddress),
+          status: 'negotiating',
+        });
+        const createdOrder = orderResponse?.data?.order || null;
+        const createdOrderItem = orderResponse?.data?.orderItem || null;
+        const orderId = orderResponse?.data?.order?._id;
+        setPendingCheckoutProductId('');
+        if (createdOrder) {
+          setOrders((current) => uniq([createdOrder, ...current]));
+          setSelectedOrder({ order: createdOrder, items: createdOrderItem ? [createdOrderItem] : [] });
+        }
+        await loadPrivate();
+        if (orderId) {
+          await loadOrderDetail(orderId);
+          navigateTo('/orders');
+          setNotice('Đã lưu địa chỉ và tạo đơn hàng chờ xác nhận.');
+        }
+      }
     },
-    [addressEditId, addressForm, loadPrivate, resetAddressForm, user]
+    [
+      addressEditId,
+      addressForm,
+      loadOrderDetail,
+      loadPrivate,
+      pendingCheckoutProductId,
+      resetAddressForm,
+      user,
+    ]
   );
 
   const handleEditAddress = useCallback((address) => {
     setAddressEditId(address._id);
     setAddressForm({
-      label: address.label || '',
+      label: address.label || 'home',
       fullName: address.fullName || '',
       phone: address.phone || '',
       province: address.province || '',
@@ -790,7 +1062,7 @@ const App = () => {
       await api.deleteAddress(addressId);
       if (addressEditId === addressId) resetAddressForm();
       await loadPrivate();
-      setNotice('Da xoa dia chi.');
+      setNotice('Đã xóa địa chỉ.');
     },
     [addressEditId, loadPrivate, resetAddressForm]
   );
@@ -816,14 +1088,32 @@ const App = () => {
       await api.deleteOrder(orderId);
       if (selectedOrder?.order?._id === orderId) {
         setSelectedOrder(null);
-        if (orderRoute?.orderId === orderId) {
-          navigateTo('/account');
+        if (routeOrderId === orderId) {
+          navigateTo('/orders');
         }
       }
       await loadPrivate();
-      setNotice('Da xoa order.');
+      setNotice('Đã xóa đơn hàng.');
     },
-    [loadPrivate, orderRoute, selectedOrder]
+    [loadPrivate, routeOrderId, selectedOrder]
+  );
+
+  const handleAttachShippingAddress = useCallback(
+    async (orderId, addressId) => {
+      const address = addresses.find((item) => String(item._id) === String(addressId));
+      if (!address) return;
+      await api.updateOrderStatus(orderId, {
+        shippingAddressId: address._id,
+        shippingAddress: mapAddressToOrderShipping(address),
+        shippingMethod: 'delivery',
+      });
+      await loadPrivate();
+      if (selectedOrder?.order?._id === orderId) {
+        await loadOrderDetail(orderId);
+      }
+      setNotice('Đã gắn địa chỉ giao hàng cho đơn.');
+    },
+    [addresses, loadOrderDetail, loadPrivate, selectedOrder]
   );
 
   const handleEscrowAction = useCallback(
@@ -856,7 +1146,7 @@ const App = () => {
 
   const handleRespondReview = useCallback(
     async (reviewId) => {
-      const content = window.prompt('Noi dung phan hoi review', 'Cam on ban da danh gia.');
+      const content = window.prompt('Nội dung phản hồi review', 'Cảm ơn bạn đã đánh giá.');
       if (content === null) return;
       await api.respondReview(reviewId, { content });
       await loadPrivate();
@@ -870,18 +1160,74 @@ const App = () => {
     async (review) => {
       await api.updateReviewVisibility(review._id, { isVisible: !review.isVisible });
       await loadPrivate();
-      if (productRoute?.productId) await loadProductDetail(productRoute.productId);
+      if (routeProductId) await loadProductDetail(routeProductId);
       setNotice('Da cap nhat hien thi review.');
     },
-    [loadPrivate, loadProductDetail, productRoute]
+    [loadPrivate, loadProductDetail, routeProductId]
   );
 
   const handleSaveProduct = useCallback(
     async (event) => {
       event.preventDefault();
+      const failProduct = (message) => {
+        setNotice(message);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+      const title = `${productForm.title || ''}`.trim();
+      const description = `${productForm.description || ''}`.trim();
+      const region = `${productForm.region || ''}`.trim();
+      const city = `${productForm.city || productForm.province || ''}`.trim();
+      const price = toNumber(productForm.price);
+      const inventory = toNumber(productForm.inventory);
+      const hasExistingImages =
+        Array.isArray(productForm.images) && productForm.images.filter(Boolean).length > 0;
+      if (!productForm.categoryId) {
+        failProduct('Vui long chon danh muc cho listing.');
+        return;
+      }
+      if (!title || title.length < 5) {
+        failProduct('Tieu de listing can it nhat 5 ky tu.');
+        return;
+      }
+      if (!description || description.length < 10) {
+        failProduct('Mo ta san pham can ro hon, toi thieu 10 ky tu.');
+        return;
+      }
+      if (price === undefined || price < 0) {
+        failProduct('Gia san pham khong hop le.');
+        return;
+      }
+      if (inventory === undefined || inventory < 0) {
+        failProduct('So luong ton kho khong hop le.');
+        return;
+      }
+      if (!productForm.condition) {
+        failProduct('Vui long chon tinh trang san pham.');
+        return;
+      }
+      if (!region || !city) {
+        failProduct('Vui long nhap day du khu vuc va tinh/thanh pho.');
+        return;
+      }
+      if (!editingProductId && !productFiles.length) {
+        failProduct('Listing moi can it nhat 1 anh.');
+        return;
+      }
+      if (editingProductId && !productFiles.length && !hasExistingImages) {
+        failProduct('Listing can co it nhat 1 anh.');
+        return;
+      }
       const payload = {
         ...productForm,
-        price: toNumber(productForm.price) || 0,
+        title,
+        description,
+        saleType: 'fixed_price',
+        price,
+        inventory,
+        region,
+        city,
+        province: city,
+        status: productForm.status || 'active',
         categoryId: productForm.categoryId,
         tags: normalizeTags(productForm.tags),
       };
@@ -891,13 +1237,12 @@ const App = () => {
         : await api.createProduct(payload);
 
       const productId = response.data?._id || editingProductId;
-      if (productFile && productId) {
+      if (productFiles.length && productId) {
         const formData = new FormData();
         formData.append('ownerType', 'product');
         formData.append('ownerId', productId);
-        formData.append('isPrimary', 'true');
-        formData.append('file', productFile);
-        appendMedia(await api.uploadSingle(formData));
+        productFiles.forEach((file) => formData.append('files', file));
+        appendMedia(await api.uploadMany(formData));
       }
 
       await refreshAll();
@@ -906,7 +1251,7 @@ const App = () => {
       navigateTo(target);
       setNotice(editingProductId ? 'Da cap nhat listing.' : 'Da tao listing moi.');
     },
-    [adminRoute, appendMedia, editingProductId, productFile, productForm, refreshAll, resetProductForm]
+    [adminRoute, appendMedia, editingProductId, productFiles, productForm, refreshAll, resetProductForm]
   );
 
   const handleDeleteProduct = useCallback(
@@ -938,9 +1283,6 @@ const App = () => {
         startAt: auctionForm.startAt ? new Date(auctionForm.startAt).toISOString() : undefined,
         endAt: auctionForm.endAt ? new Date(auctionForm.endAt).toISOString() : undefined,
         startingBid: toNumber(auctionForm.startingBid) || 0,
-        currentBid: toNumber(auctionForm.currentBid),
-        reservePrice: toNumber(auctionForm.reservePrice),
-        buyNowPrice: toNumber(auctionForm.buyNowPrice),
         bidStep: toNumber(auctionForm.bidStep) || 10000,
         status: auctionForm.status,
       };
@@ -975,67 +1317,93 @@ const App = () => {
     [loadAuctionDetail, refreshAll, selectedAuctionDetail]
   );
 
+  const handleOpenAuction = useCallback(
+    async (auctionId) => {
+      await api.openAuction(auctionId, {});
+      await refreshAll();
+      if (selectedAuctionDetail?.auction?._id === auctionId) {
+        await loadAuctionDetail(auctionId);
+      }
+      setNotice('Đã mở đấu giá sang trạng thái live.');
+    },
+    [loadAuctionDetail, refreshAll, selectedAuctionDetail]
+  );
+
   const handleDeleteAuction = useCallback(
     async (auctionId) => {
       await api.deleteAuction(auctionId);
-      if (auctionRoute?.auctionId === auctionId) {
+      if (routeAuctionId === auctionId) {
         setSelectedAuctionDetail(null);
         navigateTo('/sell/auctions');
       }
       await refreshAll();
       setNotice('Da xoa auction.');
     },
-    [auctionRoute, refreshAll]
+    [refreshAll, routeAuctionId]
   );
 
   const handleCreateOrder = useCallback(async () => {
     if (!selectedProduct?._id || !user?._id) return;
+    if (selectedProduct.status !== 'active') {
+      setNotice('Sản phẩm này hiện chưa sẵn sàng để mua ngay.');
+      return;
+    }
+    const buyNowPrice = Number(selectedProduct.buyNowPrice || selectedProduct.price || 0);
+    if (buyNowPrice <= 0) {
+      if (selectedAuction?._id) {
+        navigateTo(`/auctions/${selectedAuction._id}`);
+      }
+      setNotice('Sản phẩm này hiện không có giá mua ngay. Hãy dùng chức năng Đặt giá.');
+      return;
+    }
+    const sellerId = selectedProduct.seller?._id || selectedProduct.seller;
+    if (String(sellerId) === String(user._id)) {
+      setNotice('Bạn không thể mua sản phẩm do chính mình đăng bán.');
+      return;
+    }
     const address = addresses.find((item) => item.isDefault) || addresses[0];
-    await api.createOrder({
+    if (!address) {
+      setPendingCheckoutProductId(selectedProduct._id);
+      resetAddressForm();
+      navigateTo('/account');
+      focusAddressSection();
+      setNotice('Bạn chưa có địa chỉ giao hàng. Hãy lưu địa chỉ, hệ thống sẽ tạo đơn ngay sau đó.');
+      return;
+    }
+
+    const response = await api.createOrder({
       productId: selectedProduct._id,
       quantity: 1,
-      paymentType: 'escrow',
+      paymentType: 'cod',
       shippingMethod: 'delivery',
       shippingFee: 30000,
       platformFee: 20000,
-      shippingAddressId: address?._id,
-      shippingAddress: address
-        ? {
-            fullName: address.fullName,
-            phone: address.phone,
-            province: address.province,
-            district: address.district,
-            ward: address.ward,
-            street: address.street,
-            fullAddress: address.fullAddress,
-          }
-        : {
-            fullName: user.fullName,
-            phone: user.phone || '',
-            province: selectedProduct.province || '',
-            district: selectedProduct.district || '',
-            ward: selectedProduct.ward || '',
-            fullAddress: selectedProduct.addressText || '',
-          },
+      shippingAddressId: address._id,
+      shippingAddress: mapAddressToOrderShipping(address),
+      status: 'negotiating',
     });
+
+    const createdOrder = response?.data?.order || null;
+    const createdOrderItem = response?.data?.orderItem || null;
+    const orderId = response?.data?.order?._id;
+    if (createdOrder) {
+      setOrders((current) => uniq([createdOrder, ...current]));
+      setSelectedOrder({ order: createdOrder, items: createdOrderItem ? [createdOrderItem] : [] });
+    }
     await loadPrivate();
-    navigateTo('/account');
-    setNotice('Da tao order tu chi tiet san pham.');
-  }, [addresses, loadPrivate, selectedProduct, user]);
+    if (orderId) {
+      await loadOrderDetail(orderId);
+      navigateTo('/orders');
+    } else {
+      navigateTo('/orders');
+    }
+    setNotice('Đã tạo đơn hàng và chuyển sang trang Đơn hàng.');
+  }, [addresses, focusAddressSection, loadOrderDetail, loadPrivate, resetAddressForm, selectedAuction, selectedProduct, user]);
 
   const handlePlaceBid = useCallback(async () => {
     if (!selectedAuction?._id) return;
-    const amount = Number(
-      window.prompt(
-        'Nhap gia bid',
-        String((selectedAuction.currentBid || selectedAuction.startingBid || 0) + (selectedAuction.bidStep || 10000))
-      )
-    );
-    if (!amount) return;
-    await api.placeBid(selectedAuction._id, amount);
-    await refreshAll();
-    setNotice('Da dat gia thanh cong.');
-  }, [refreshAll, selectedAuction]);
+    openBidDialog(selectedAuction, selectedProduct?.title);
+  }, [openBidDialog, selectedAuction, selectedProduct]);
 
   const handlePlaceBidForAuction = useCallback(
     async (auctionId) => {
@@ -1043,21 +1411,35 @@ const App = () => {
         ? selectedAuctionDetail.auction
         : auctions.find((item) => String(item._id) === String(auctionId));
       if (!targetAuction?._id) return;
-      const amount = Number(
-        window.prompt(
-          'Nhap gia bid',
-          String((targetAuction.currentBid || targetAuction.startingBid || 0) + (targetAuction.bidStep || 10000))
-        )
-      );
-      if (!amount) return;
-      await api.placeBid(targetAuction._id, amount);
+      openBidDialog(targetAuction, targetAuction.product?.title);
+    },
+    [auctions, openBidDialog, selectedAuctionDetail]
+  );
+
+  const handleSubmitBidDialog = useCallback(
+    async (event) => {
+      event.preventDefault();
+      if (!bidDialog.auctionId) return;
+
+      const amount = Number(bidDialog.amount);
+      const minimumBid = Number(bidDialog.currentBid || 0) + Number(bidDialog.bidStep || 10000);
+
+      if (!amount || Number.isNaN(amount)) {
+        throw new Error('Vui lòng nhập giá đặt hợp lệ.');
+      }
+      if (amount < minimumBid) {
+        throw new Error(`Giá đặt phải từ ${minimumBid.toLocaleString('vi-VN')} VND trở lên.`);
+      }
+
+      await api.placeBid(bidDialog.auctionId, amount);
+      closeBidDialog();
       await refreshAll();
       if (String(pathname).startsWith('/auctions/')) {
-        await loadAuctionDetail(targetAuction._id);
+        await loadAuctionDetail(bidDialog.auctionId);
       }
-      setNotice('Da dat gia trong trang auction.');
+      setNotice('Đã gửi lượt đặt giá thành công.');
     },
-    [auctions, loadAuctionDetail, pathname, refreshAll, selectedAuctionDetail]
+    [bidDialog, closeBidDialog, loadAuctionDetail, pathname, refreshAll]
   );
 
   const handleStartConversation = useCallback(async () => {
@@ -1113,7 +1495,7 @@ const App = () => {
 
   const handleEditMessage = useCallback(
     async (message) => {
-      const content = window.prompt('Sua noi dung tin nhan', message.content || '');
+      const content = window.prompt('Sửa nội dung tin nhắn', message.content || '');
       if (content === null) return;
       await api.updateMessage(activeConversationId, message._id, { content });
       setNotice('Da sua message.');
@@ -1140,9 +1522,24 @@ const App = () => {
   const handleSaveCategory = useCallback(
     async (event) => {
       event.preventDefault();
+      const name = `${categoryForm.name || ''}`.trim();
+      const slug = toSlug(categoryForm.slug || categoryForm.name);
+      if (!name) {
+        setNotice('Vui long nhap ten danh muc.');
+        return;
+      }
+      if (!slug) {
+        setNotice('Slug danh muc khong hop le.');
+        return;
+      }
       const payload = {
         ...categoryForm,
+        name,
+        slug,
+        icon: `${categoryForm.icon || ''}`.trim(),
+        parentCategory: categoryForm.parentCategory || '',
         sortOrder: toNumber(categoryForm.sortOrder) || 0,
+        isActive: categoryForm.isActive !== false,
       };
       if (categoryEditId) {
         await api.updateCategory(categoryEditId, payload);
@@ -1163,8 +1560,11 @@ const App = () => {
       name: category.name || '',
       slug: category.slug || '',
       description: category.description || '',
+      icon: category.icon || '',
+      parentCategory: category.parentCategory?._id || category.parentCategory || '',
       sortOrder: String(category.sortOrder || 0),
       isActive: category.isActive !== false,
+      source: category.source || 'manual',
     });
     navigateTo('/admin/categories');
   }, []);
@@ -1237,7 +1637,7 @@ const App = () => {
           mimeType: file.type,
         })
       );
-      setNotice('Da upload base64.');
+      setNotice('Da tai anh bang base64.');
     },
     [appendMedia, uploadState]
   );
@@ -1250,7 +1650,7 @@ const App = () => {
       formData.append('ownerId', uploadState.ownerId);
       formData.append('file', file);
       appendMedia(await api.uploadSingle(formData));
-      setNotice('Da upload multipart.');
+      setNotice('Da tai 1 anh bang multipart/form-data.');
     },
     [appendMedia, uploadState]
   );
@@ -1263,7 +1663,7 @@ const App = () => {
       formData.append('ownerId', uploadState.ownerId);
       files.forEach((file) => formData.append('files', file));
       appendMedia(await api.uploadMany(formData));
-      setNotice('Da upload multipart nhieu anh.');
+      setNotice('Da tai nhieu anh cung luc.');
     },
     [appendMedia, uploadState]
   );
@@ -1276,7 +1676,7 @@ const App = () => {
         url: uploadState.remoteUrl,
       })
     );
-    setNotice('Da dang ky remote media.');
+    setNotice('Da dang ky anh tu remote URL.');
   }, [appendMedia, uploadState]);
 
   const handleDeleteMedia = useCallback(async (mediaId) => {
@@ -1311,7 +1711,9 @@ const App = () => {
     categories,
     productForm,
     setProductForm,
-    setProductFile,
+    setProductFiles,
+    canManageCategories: isAdmin,
+    categoryCreatePath: '/admin/categories/create',
     editingProductId,
     onSaveProduct: (event) => run(() => handleSaveProduct(event)),
     onResetProductForm: () => {
@@ -1331,6 +1733,7 @@ const App = () => {
     sellerAuctions,
     onEditAuction: handleEditAuction,
     onViewAuction: selectAuctionRoute,
+    onOpenAuction: (auctionId) => run(() => handleOpenAuction(auctionId)),
     onCloseAuction: (auctionId) => run(() => handleCloseAuction(auctionId)),
     onDeleteAuction: (auctionId) => run(() => handleDeleteAuction(auctionId)),
   };
@@ -1348,11 +1751,13 @@ const App = () => {
     onEditAddress: handleEditAddress,
     onResetAddressForm: resetAddressForm,
     onDeleteAddress: (addressId) => run(() => handleDeleteAddress(addressId)),
-    orders,
+    orders: adminOrders,
     selectedOrder,
     onSelectOrder: selectOrderRoute,
     onUpdateOrderStatus: (orderId, status) => run(() => handleUpdateOrderStatus(orderId, status)),
     onDeleteOrder: (orderId) => run(() => handleDeleteOrder(orderId)),
+    onAttachShippingAddress: (orderId, addressId) =>
+      run(() => handleAttachShippingAddress(orderId, addressId)),
     escrows,
     selectedEscrow,
     onViewEscrow: selectEscrowRoute,
@@ -1399,6 +1804,8 @@ const App = () => {
 
   const commonAdminProps = {
     isAdmin,
+    canManageUsers: isAdmin,
+    canDeleteProducts: isAdmin,
     users,
     onPatchUser: (member, patch) => run(() => handlePatchUser(member, patch)),
     onDeleteUser: (userId) => run(() => handleDeleteUser(userId)),
@@ -1419,6 +1826,7 @@ const App = () => {
     onDeleteOrder: (orderId) => run(() => handleDeleteOrder(orderId)),
     auctions,
     onViewAuction: selectAuctionRoute,
+    onOpenAuction: (auctionId) => run(() => handleOpenAuction(auctionId)),
     onCloseAuction: (auctionId) => run(() => handleCloseAuction(auctionId)),
     onDeleteAuction: (auctionId) => run(() => handleDeleteAuction(auctionId)),
     escrows,
@@ -1436,55 +1844,80 @@ const App = () => {
   };
 
   const mainNav = [
-    { label: 'Trang chu', to: '/' },
-    { label: 'Tai khoan', to: '/account', requiresAuth: true },
-    { label: 'Tin nhan', to: '/messages', requiresAuth: true },
-    { label: 'Dang ban', to: '/sell/products', requiresAuth: true },
-    { label: 'Upload', to: '/upload-lab', requiresAuth: true },
-    { label: 'Docs', to: '/docs' },
-    { label: 'Admin', to: '/admin', requiresAdmin: true },
+    { label: 'Trang chủ', to: '/' },
+    { label: 'Tài khoản', to: '/account', requiresAuth: true },
+    { label: 'Đơn hàng', to: '/orders', requiresAuth: true },
+    { label: 'Tin nhắn', to: '/messages', requiresAuth: true },
+    { label: 'Đăng bán', to: '/sell/products', requiresAuth: true, requiresSeller: true },
+    { label: 'Tài liệu', to: '/docs' },
+    { label: 'Quản trị', to: '/admin', requiresAdmin: true },
   ];
 
   const currentPageLabel = useMemo(() => {
-    if (pathname === '/') return 'Trang chu';
-    if (productRoute) return 'Chi tiet san pham';
-    if (auctionRoute) return 'Chi tiet auction';
-    if (sellerStoreRoute) return 'Gian hang nguoi ban';
-    if (orderRoute) return 'Chi tiet order';
-    if (escrowRoute) return 'Chi tiet escrow';
-    if (pathname === '/login') return 'Dang nhap';
-    if (pathname === '/register') return 'Dang ky';
-    if (pathname === '/account') return 'Tai khoan';
-    if (pathname.startsWith('/messages')) return 'Tin nhan';
-    if (pathname.startsWith('/sell/products/create')) return 'Tao san pham';
-    if (pathname.startsWith('/sell/products')) return 'Quan ly san pham';
-    if (pathname.startsWith('/sell/auctions/create')) return 'Tao auction';
-    if (pathname.startsWith('/sell/auctions')) return 'Quan ly auction';
-    if (pathname.startsWith('/admin/products/create')) return 'Admin tao san pham';
-    if (pathname.startsWith('/admin/products')) return 'Admin san pham';
-    if (pathname.startsWith('/admin/categories')) return 'Admin danh muc';
-    if (pathname.startsWith('/admin/users')) return 'Admin nguoi dung';
-    if (pathname.startsWith('/admin/orders')) return 'Admin van hanh';
+    if (pathname === '/') return 'Trang chủ';
+    if (productRoute) return 'Chi tiết sản phẩm';
+    if (auctionRoute) return 'Chi tiết đấu giá';
+    if (sellerStoreRoute) return 'Gian hàng người bán';
+    if (pathname === '/orders') return 'Đơn hàng';
+    if (orderRoute) return 'Chi tiết đơn hàng';
+    if (escrowRoute) return 'Chi tiết escrow';
+    if (pathname === '/login') return 'Đăng nhập';
+    if (pathname === '/register') return 'Đăng ký';
+    if (pathname === '/account') return 'Tài khoản';
+    if (pathname.startsWith('/messages')) return 'Tin nhắn';
+    if (pathname.startsWith('/sell/products/create')) return 'Tạo sản phẩm';
+    if (pathname.startsWith('/sell/products')) return 'Quản lý sản phẩm';
+    if (pathname.startsWith('/sell/auctions/create')) return 'Tạo đấu giá';
+    if (pathname.startsWith('/sell/auctions')) return 'Quản lý đấu giá';
+    if (pathname.startsWith('/admin/products/create')) return 'Admin tạo sản phẩm';
+    if (pathname.startsWith('/admin/products')) return 'Admin sản phẩm';
+    if (pathname.startsWith('/admin/categories/create')) return 'Admin tạo danh mục';
+    if (pathname.startsWith('/admin/categories')) return 'Admin danh mục';
+    if (pathname.startsWith('/admin/users')) return 'Admin người dùng';
+    if (pathname.startsWith('/admin/orders')) return 'Admin vận hành';
     if (pathname.startsWith('/admin/imports')) return 'Admin import';
     if (pathname.startsWith('/admin')) return 'Admin dashboard';
-    if (pathname === '/upload-lab') return 'Upload lab';
     if (pathname === '/docs') return 'API docs';
     return 'Marketplace';
   }, [auctionRoute, escrowRoute, orderRoute, pathname, productRoute, sellerStoreRoute]);
 
-  const renderAuthRequired = (content, title = 'Can dang nhap') => {
+  const renderAuthRequired = (content, title = 'Cần đăng nhập') => {
     if (user) return content;
     return (
-      <SectionCard title={title} subtitle="Auth required" className="wide">
-        <p className="muted">Hay dang nhap hoac dang ky de truy cap chuc nang nay.</p>
+      <SectionCard title={title} subtitle="Yêu cầu đăng nhập" className="wide">
+        <p className="muted">Hãy đăng nhập hoặc đăng ký để truy cập chức năng này.</p>
         <div className="actions-row">
           <AppLink to="/login" className="route-pill">
-            Dang nhap
+            Đăng nhập
           </AppLink>
           <AppLink to="/register" className="route-pill">
-            Dang ky
+            Đăng ký
           </AppLink>
         </div>
+      </SectionCard>
+    );
+  };
+
+  const renderRoleRequired = (content, options = {}) => {
+    const {
+      title = 'Cần đăng nhập',
+      isAllowed = true,
+      requiredRoles = [],
+      forbiddenMessage = 'Bạn không có quyền truy cập chức năng này.',
+    } = options;
+    if (!user) {
+      return renderAuthRequired(content, title);
+    }
+    if (isAllowed) {
+      return content;
+    }
+
+    return (
+      <SectionCard title={title} subtitle="Yêu cầu phân quyền" className="wide">
+        <p className="muted">
+          {forbiddenMessage}
+          {requiredRoles.length ? ` Vai trò cần có: ${requiredRoles.join(', ')}.` : ''}
+        </p>
       </SectionCard>
     );
   };
@@ -1492,7 +1925,15 @@ const App = () => {
   const renderRoute = () => {
     if (pathname === '/login') {
       return (
-        <LoginPage loginForm={loginForm} setLoginForm={setLoginForm} onSubmit={(event) => run(() => handleLogin(event))} />
+        <LoginPage
+          loginForm={loginForm}
+          rememberAccount={rememberAccount}
+          setLoginForm={setLoginForm}
+          setRememberAccount={setRememberAccount}
+          showPassword={showLoginPassword}
+          setShowPassword={setShowLoginPassword}
+          onSubmit={(event) => run(() => handleLogin(event))}
+        />
       );
     }
     if (pathname === '/register') {
@@ -1500,6 +1941,10 @@ const App = () => {
         <RegisterPage
           registerForm={registerForm}
           setRegisterForm={setRegisterForm}
+          showConfirmPassword={showRegisterConfirmPassword}
+          showPassword={showRegisterPassword}
+          setShowConfirmPassword={setShowRegisterConfirmPassword}
+          setShowPassword={setShowRegisterPassword}
           onSubmit={(event) => run(() => handleRegister(event))}
         />
       );
@@ -1517,6 +1962,7 @@ const App = () => {
           user={user}
           isAdmin={isAdmin}
           onPlaceBidForAuction={(auctionId) => run(() => handlePlaceBidForAuction(auctionId))}
+          onOpenAuction={(auctionId) => run(() => handleOpenAuction(auctionId))}
           onCloseAuction={(auctionId) => run(() => handleCloseAuction(auctionId))}
           onEditAuction={handleEditAuction}
         />
@@ -1538,9 +1984,14 @@ const App = () => {
     if (orderRoute) {
       return renderAuthRequired(
         <OrderDetailPage
+          user={user}
+          addresses={addresses}
           selectedOrder={selectedOrder}
           onUpdateOrderStatus={(orderId, status) => run(() => handleUpdateOrderStatus(orderId, status))}
           onDeleteOrder={(orderId) => run(() => handleDeleteOrder(orderId))}
+          onAttachShippingAddress={(orderId, addressId) =>
+            run(() => handleAttachShippingAddress(orderId, addressId))
+          }
         />,
         'Chi tiet order'
       );
@@ -1555,63 +2006,120 @@ const App = () => {
       );
     }
     if (pathname === '/account') {
-      return renderAuthRequired(<AccountPage {...commonAccountProps} />, 'Tai khoan');
+      return renderAuthRequired(<AccountPage {...commonAccountProps} />, 'Tài khoản');
+    }
+    if (pathname === '/orders') {
+      return renderAuthRequired(<OrdersPage {...commonAccountProps} />, 'Đơn hàng');
     }
     if (pathname === '/messages' || messageRoute) {
       return renderAuthRequired(<MessagesPage {...commonChatProps} />, 'Tin nhan');
     }
     if (pathname === '/sell/products') {
-      return renderAuthRequired(<SellerProductsPage {...commonSellerProps} />, 'Quan ly listing');
+      return renderRoleRequired(<SellerProductsPage {...commonSellerProps} />, {
+        title: 'Quản lý listing',
+        isAllowed: canSell,
+        requiredRoles: ['seller', 'admin'],
+        forbiddenMessage: 'Tài khoản hiện tại chưa có quyền người bán.',
+      });
     }
     if (pathname === '/sell/products/create' || sellerEditRoute) {
-      return renderAuthRequired(<SellerProductFormPage {...commonSellerProps} />, 'Tao hoac sua listing');
+      return renderRoleRequired(<SellerProductFormPage {...commonSellerProps} />, {
+        title: 'Tạo hoặc sửa listing',
+        isAllowed: canSell,
+        requiredRoles: ['seller', 'admin'],
+        forbiddenMessage: 'Tài khoản hiện tại chưa có quyền người bán.',
+      });
     }
     if (pathname === '/sell/auctions') {
-      return renderAuthRequired(<SellerAuctionsPage {...commonSellerProps} />, 'Quan ly auction');
+      return renderRoleRequired(<SellerAuctionsPage {...commonSellerProps} />, {
+        title: 'Quản lý đấu giá',
+        isAllowed: canSell,
+        requiredRoles: ['seller', 'admin'],
+        forbiddenMessage: 'Tài khoản hiện tại chưa có quyền người bán.',
+      });
     }
     if (pathname === '/sell/auctions/create') {
-      return renderAuthRequired(<SellerAuctionFormPage {...commonSellerProps} />, 'Tao hoac sua auction');
-    }
-    if (pathname === '/upload-lab') {
-      return renderAuthRequired(<UploadLabPage {...commonUploadProps} />, 'Upload lab');
+      return renderRoleRequired(<SellerAuctionFormPage {...commonSellerProps} />, {
+        title: 'Tạo hoặc sửa đấu giá',
+        isAllowed: canSell,
+        requiredRoles: ['seller', 'admin'],
+        forbiddenMessage: 'Tài khoản hiện tại chưa có quyền người bán.',
+      });
     }
     if (pathname === '/admin') {
-      return <AdminDashboardPage {...commonAdminProps} />;
+      return renderRoleRequired(<AdminDashboardPage {...commonAdminProps} />, {
+        title: 'Admin dashboard',
+        isAllowed: isAdmin,
+        requiredRoles: ['admin'],
+      });
     }
     if (pathname === '/admin/users') {
-      return <AdminUsersPage {...commonAdminProps} />;
+      return renderRoleRequired(<AdminUsersPage {...commonAdminProps} />, {
+        title: 'Admin nguoi dung',
+        isAllowed: isAdmin,
+        requiredRoles: ['admin'],
+        forbiddenMessage: 'Chi admin moi duoc quan ly tai khoan va gan role.',
+      });
     }
-    if (pathname === '/admin/categories') {
-      return <AdminCategoriesPage {...commonAdminProps} />;
+    if (pathname === '/admin/categories' || pathname === '/admin/categories/create') {
+      return renderRoleRequired(
+        <AdminCategoriesPage
+          {...commonAdminProps}
+          createMode={pathname === '/admin/categories/create'}
+        />,
+        {
+          title: 'Admin danh muc',
+          isAllowed: isAdmin,
+          requiredRoles: ['admin'],
+        }
+      );
     }
     if (pathname === '/admin/products') {
-      return <AdminProductsPage {...commonAdminProps} />;
+      return renderRoleRequired(<AdminProductsPage {...commonAdminProps} />, {
+        title: 'Admin san pham',
+        isAllowed: isAdmin,
+        requiredRoles: ['admin'],
+      });
     }
     if (
       pathname === '/admin/products/create' ||
       pathname === '/admin/product/create' ||
       adminEditRoute
     ) {
-      return <AdminProductFormPage {...commonSellerProps} />;
+      return renderRoleRequired(<AdminProductFormPage {...commonSellerProps} />, {
+        title: 'Admin tao san pham',
+        isAllowed: isAdmin,
+        requiredRoles: ['admin'],
+        forbiddenMessage: 'Chi admin moi duoc tao hoac sua listing tu workspace admin.',
+      });
     }
     if (pathname === '/admin/orders') {
-      return <AdminOrdersPage {...commonAdminProps} />;
+      return renderRoleRequired(<AdminOrdersPage {...commonAdminProps} />, {
+        title: 'Admin van hanh',
+        isAllowed: isAdmin,
+        requiredRoles: ['admin'],
+        forbiddenMessage: 'Chi admin moi duoc truy cap van hanh order va escrow.',
+      });
     }
     if (pathname === '/admin/imports') {
-      return <AdminImportsPage {...commonAdminProps} />;
+      return renderRoleRequired(<AdminImportsPage {...commonAdminProps} />, {
+        title: 'Admin import',
+        isAllowed: isAdmin,
+        requiredRoles: ['admin'],
+      });
     }
     if (pathname === '/docs') {
       return <DocsPage />;
     }
     return (
-      <SectionCard title="Khong tim thay trang" subtitle="404" className="wide">
-        <p className="muted">Route nay chua duoc map. Hay quay ve trang chu hoac khu quan tri.</p>
+      <SectionCard title="Không tìm thấy trang" subtitle="404" className="wide">
+        <p className="muted">Route này chưa được map. Hãy quay về trang chủ hoặc khu quản trị.</p>
         <div className="actions-row">
           <AppLink to="/" className="route-pill">
-            Ve trang chu
+            Về trang chủ
           </AppLink>
           <AppLink to="/admin" className="route-pill">
-            Ve admin
+            Về admin
           </AppLink>
         </div>
       </SectionCard>
@@ -1626,16 +2134,16 @@ const App = () => {
             <AppLink to="/" className="brand-link">
               ChoMarket
             </AppLink>
-            <span className="muted">Mua ban do cu, chat truc tiep, auction va escrow</span>
+            <span className="muted">Mua bán đồ cũ, chat trực tiếp, đấu giá và giao dịch trực tiếp</span>
           </div>
           {headerSearchVisible ? (
             <form className="site-search" onSubmit={handleHeaderSearch}>
               <input
                 value={filters.q}
                 onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))}
-                placeholder="Tim dien thoai, xe, do gia dung..."
+                placeholder="Tìm điện thoại, xe, đồ gia dụng..."
               />
-              <button type="submit" className="primary-btn">Tim</button>
+              <button type="submit" className="primary-btn">Tìm</button>
             </form>
           ) : null}
           <div className="site-header__right">
@@ -1643,16 +2151,17 @@ const App = () => {
               {mainNav
                 .filter((item) => !item.requiresAuth || user)
                 .filter((item) => !item.requiresAdmin || isAdmin)
+                .filter((item) => !item.requiresSeller || canSell)
                 .map((item) => {
                   const isActive = item.to === '/'
                     ? homeRoute
                     : item.to === '/messages'
                       ? messagesRoute
+                      : item.to === '/orders'
+                        ? ordersRoute
                       : item.to === '/account'
                         ? accountRoute
-                        : item.to === '/upload-lab'
-                          ? uploadRoute
-                          : item.to === '/docs'
+                        : item.to === '/docs'
                             ? docsRoute
                             : item.to === '/admin'
                               ? adminRoute
@@ -1675,18 +2184,18 @@ const App = () => {
                     to="/login"
                     className={`site-nav__link${pathname === '/login' ? ' active' : ''}`}
                   >
-                    Dang nhap
+                    Đăng nhập
                   </AppLink>
                   <AppLink
                     to="/register"
                     className={`site-nav__link${pathname === '/register' ? ' active' : ''}`}
                   >
-                    Dang ky
+                    Đăng ký
                   </AppLink>
                 </>
               ) : (
                 <button type="button" onClick={() => run(handleLogout)}>
-                  Dang xuat
+                  Đăng xuất
                 </button>
               )}
             </nav>
@@ -1702,9 +2211,9 @@ const App = () => {
           actions={
             <div className="actions-row wrap">
               {user ? <span className="route-pill">{user.fullName || user.username}</span> : null}
-              <span className="route-pill">Roles: {roleNames(user?.roles || [])}</span>
+              <span className="route-pill">Vai trò: {roleNames(user?.roles || [])}</span>
               <span className="route-pill">Socket: {socketState}</span>
-              <span className="route-pill">{pathname}</span>
+              <span className="route-pill">Trang: {currentPageLabel}</span>
             </div>
           }
         >
@@ -1712,47 +2221,61 @@ const App = () => {
         </SectionCard>
 
         {sellerRoute ? (
-          <SectionCard title="Seller routes" subtitle="Tung chuc nang nam o page rieng" className="wide">
+          <SectionCard title="Khu người bán" subtitle="Từng chức năng nằm ở trang riêng" className="wide">
             <div className="actions-row wrap">
-              <AppLink to="/sell/products" className="route-pill">
-                /sell/products
+              <AppLink to="/sell/products" className={`route-pill${pathname === '/sell/products' ? ' active' : ''}`}>
+                Danh sach tin dang
               </AppLink>
-              <AppLink to="/sell/products/create" className="route-pill">
-                /sell/products/create
+              <AppLink
+                to="/sell/products/create"
+                className={`route-pill${pathname === '/sell/products/create' || sellerEditRoute ? ' active' : ''}`}
+              >
+                Dang tin moi
               </AppLink>
-              <AppLink to="/sell/auctions" className="route-pill">
-                /sell/auctions
+              {isAdmin ? (
+                <AppLink to="/admin/categories/create" className={`route-pill${pathname === '/admin/categories/create' ? ' active' : ''}`}>
+                  Tao danh muc
+                </AppLink>
+              ) : null}
+              <AppLink to="/sell/auctions" className={`route-pill${pathname === '/sell/auctions' ? ' active' : ''}`}>
+                Danh sach dau gia
               </AppLink>
-              <AppLink to="/sell/auctions/create" className="route-pill">
-                /sell/auctions/create
+              <AppLink to="/sell/auctions/create" className={`route-pill${pathname === '/sell/auctions/create' ? ' active' : ''}`}>
+                Tao dau gia
               </AppLink>
             </div>
           </SectionCard>
         ) : null}
 
         {adminRoute ? (
-          <SectionCard title="Admin routes" subtitle="CRUD rieng cho admin" className="wide">
+          <SectionCard title="Khu quản trị" subtitle="CRUD riêng cho admin" className="wide">
             <div className="actions-row wrap">
-              <AppLink to="/admin" className="route-pill">
-                /admin
+              <AppLink to="/admin" className={`route-pill${pathname === '/admin' ? ' active' : ''}`}>
+                Dashboard
               </AppLink>
-              <AppLink to="/admin/users" className="route-pill">
-                /admin/users
+              <AppLink to="/admin/users" className={`route-pill${pathname === '/admin/users' ? ' active' : ''}`}>
+                Nguoi dung
               </AppLink>
-              <AppLink to="/admin/categories" className="route-pill">
-                /admin/categories
+              <AppLink to="/admin/categories" className={`route-pill${pathname === '/admin/categories' ? ' active' : ''}`}>
+                Danh muc
               </AppLink>
-              <AppLink to="/admin/products" className="route-pill">
-                /admin/products
+              <AppLink to="/admin/categories/create" className={`route-pill${pathname === '/admin/categories/create' ? ' active' : ''}`}>
+                Tao danh muc
               </AppLink>
-              <AppLink to="/admin/products/create" className="route-pill">
-                /admin/products/create
+              <AppLink to="/admin/products" className={`route-pill${pathname === '/admin/products' ? ' active' : ''}`}>
+                San pham
               </AppLink>
-              <AppLink to="/admin/orders" className="route-pill">
-                /admin/orders
+              <AppLink
+                to="/admin/products/create"
+                className={`route-pill${pathname === '/admin/products/create' || adminEditRoute ? ' active' : ''}`}
+              >
+                Tao san pham
               </AppLink>
-              <AppLink to="/admin/imports" className="route-pill">
-                /admin/imports
+              <AppLink to="/admin/orders" className={`route-pill${pathname === '/admin/orders' ? ' active' : ''}`}>
+                Van hanh
+              </AppLink>
+              <AppLink to="/admin/imports" className={`route-pill${pathname === '/admin/imports' ? ' active' : ''}`}>
+                Import
               </AppLink>
             </div>
           </SectionCard>
@@ -1761,9 +2284,77 @@ const App = () => {
         {renderRoute()}
       </main>
 
+      {bidDialog.open ? (
+        <div className="modal-backdrop" role="presentation" onClick={closeBidDialog}>
+          <div
+            className="bid-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bid-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="bid-modal__head">
+              <div>
+                <p className="eyebrow">Đặt giá</p>
+                <h3 id="bid-modal-title">{bidDialog.title || 'Phiên đấu giá'}</h3>
+              </div>
+              <button type="button" className="ghost-btn" onClick={closeBidDialog}>
+                Đóng
+              </button>
+            </div>
+
+            <div className="bid-modal__stats">
+              <div className="bid-modal__stat">
+                <span>Giá hiện tại</span>
+                <strong>{Number(bidDialog.currentBid || 0).toLocaleString('vi-VN')} VND</strong>
+              </div>
+              <div className="bid-modal__stat">
+                <span>Bước giá tối thiểu</span>
+                <strong>{Number(bidDialog.bidStep || 0).toLocaleString('vi-VN')} VND</strong>
+              </div>
+              <div className="bid-modal__stat">
+                <span>Mức cần nhập</span>
+                <strong>
+                  {(Number(bidDialog.currentBid || 0) + Number(bidDialog.bidStep || 10000)).toLocaleString('vi-VN')} VND
+                </strong>
+              </div>
+            </div>
+
+            <form className="bid-modal__form" onSubmit={(event) => run(() => handleSubmitBidDialog(event))}>
+              <label className="bid-modal__field">
+                <span>Số tiền bạn muốn đặt</span>
+                <input
+                  type="number"
+                  min={Number(bidDialog.currentBid || 0) + Number(bidDialog.bidStep || 10000)}
+                  step={Number(bidDialog.bidStep || 10000)}
+                  value={bidDialog.amount}
+                  onChange={(event) =>
+                    setBidDialog((current) => ({
+                      ...current,
+                      amount: event.target.value,
+                    }))
+                  }
+                  placeholder="Nhập số tiền đặt giá"
+                  required
+                />
+              </label>
+
+              <div className="bid-modal__actions">
+                <button type="button" className="ghost-btn" onClick={closeBidDialog}>
+                  Hủy
+                </button>
+                <button type="submit" className="primary-btn">
+                  Gửi giá đặt
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
       <footer className="site-footer">
         <div className="site-footer__inner">
-          <span>Marketplace demo theo flow Chotot/Mercari: xem san pham, chat nguoi ban, tao order, auction, escrow, admin CRUD.</span>
+          <span>Marketplace demo theo flow Chợ Tốt/Mercari: xem sản phẩm, chat người bán, tạo đơn hàng, đấu giá và quản trị.</span>
           <div className="actions-row wrap">
             <a href="/docs.html" target="_blank" rel="noreferrer">
               Docs cu

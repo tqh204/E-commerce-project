@@ -7,6 +7,7 @@ const AuctionDetailPage = ({
   user,
   isAdmin,
   onPlaceBidForAuction,
+  onOpenAuction,
   onCloseAuction,
   onEditAuction,
 }) => {
@@ -18,37 +19,37 @@ const AuctionDetailPage = ({
     <>
       <section className="detail-intro section-card wide">
         <div>
-          <p className="eyebrow">Auction detail</p>
-          <h2>Theo doi current bid, lich su dat gia va dong auction tren mot page rieng.</h2>
+          <p className="eyebrow">Đấu giá</p>
+          <h2>Theo dõi giá hiện tại, lịch sử ra giá và mở hoặc đóng phiên đấu giá trên trang riêng.</h2>
         </div>
         <div className="tag-row">
           <AppLink to="/" className="route-pill">
-            / 
+            Trang chủ
           </AppLink>
-          <span className="route-pill">{auction?.status || 'dang tai du lieu'}</span>
+          <span className="route-pill">{auction?.status || 'đang tải dữ liệu'}</span>
         </div>
       </section>
 
       {!auction ? (
-        <SectionCard title="Dang tai auction" subtitle="GET /api/auctions/:id" className="wide">
-          <p className="muted">Auction detail se hien o day sau khi frontend tai xong du lieu.</p>
+        <SectionCard title="Đang tải đấu giá" subtitle="GET /api/auctions/:id" className="wide">
+          <p className="muted">Chi tiết đấu giá sẽ hiện ở đây sau khi tải xong dữ liệu.</p>
         </SectionCard>
       ) : (
         <div className="view-grid">
           <SectionCard
-            title={auction.product?.title || 'Auction'}
+            title={auction.product?.title || 'Đấu giá'}
             subtitle={auction._id}
             className="wide"
             actions={
               <div className="actions-row wrap">
                 {auction.product?._id ? (
                   <AppLink to={`/products/${auction.product._id}`} className="route-pill">
-                    Ve san pham
+                    Về sản phẩm
                   </AppLink>
                 ) : null}
                 {isOwner ? (
                   <button type="button" className="route-pill route-pill--button" onClick={() => onEditAuction(auction)}>
-                    Sua auction
+                    Sửa đấu giá
                   </button>
                 ) : null}
               </div>
@@ -56,75 +57,84 @@ const AuctionDetailPage = ({
           >
             <div className="detail-stats">
               <div className="detail-stat-card">
-                <span>Current bid</span>
+                <span>Giá hiện tại</span>
                 <strong>{formatPrice(auction.currentBid || auction.startingBid)} VND</strong>
               </div>
               <div className="detail-stat-card">
-                <span>Buoc gia</span>
+                <span>Bước giá</span>
                 <strong>{formatPrice(auction.bidStep || 0)} VND</strong>
               </div>
               <div className="detail-stat-card">
-                <span>Nguoi dang dan</span>
-                <strong>{auction.winnerUser?.fullName || auction.winnerUser?.username || 'chua co'}</strong>
+                <span>Người đang dẫn</span>
+                <strong>{auction.winnerUser?.fullName || auction.winnerUser?.username || 'chưa có'}</strong>
               </div>
               <div className="detail-stat-card">
-                <span>Total bids</span>
+                <span>Tổng lượt ra giá</span>
                 <strong>{auction.totalBids || bids.length}</strong>
               </div>
             </div>
 
             <div className="detail-grid">
               <div className="detail-panel">
-                <h4>Moc thoi gian</h4>
+                <h4>Mốc thời gian</h4>
                 <div className="meta-grid">
-                  <span>Bat dau: {formatDateTime(auction.startAt)}</span>
-                  <span>Ket thuc: {formatDateTime(auction.endAt)}</span>
-                  <span>Last bid: {formatDateTime(auction.lastBidAt)}</span>
-                  <span>Reserve: {formatPrice(auction.reservePrice || 0)} VND</span>
+                  <span>Bắt đầu: {formatDateTime(auction.startAt)}</span>
+                  <span>Kết thúc: {formatDateTime(auction.endAt)}</span>
+                  <span>Lần ra giá gần nhất: {formatDateTime(auction.lastBidAt)}</span>
+                  <span>Giá khởi điểm: {formatPrice(auction.startingBid || 0)} VND</span>
                 </div>
               </div>
 
               <div className="detail-panel">
-                <h4>Nguoi ban</h4>
+                <h4>Người bán</h4>
                 <p>{auction.seller?.fullName || auction.seller?.username || 'n/a'}</p>
                 <div className="actions-row wrap">
                   <AppLink to={`/users/${auction.seller?._id || auction.seller}`} className="route-pill">
-                    Xem gian hang
+                    Xem gian hàng
                   </AppLink>
                 </div>
               </div>
             </div>
 
             <div className="actions-row wrap">
-              <button type="button" onClick={() => onPlaceBidForAuction(auction._id)} disabled={!user || isOwner}>
-                Dat gia ngay
+              <button
+                type="button"
+                onClick={() => onPlaceBidForAuction(auction._id)}
+                disabled={!user || isOwner || auction.status !== 'live'}
+              >
+                Đặt giá ngay
               </button>
-              {(isOwner || isAdmin) ? (
+              {(isOwner || isAdmin) && auction.status !== 'live' ? (
+                <button type="button" onClick={() => onOpenAuction(auction._id)}>
+                  Mở đấu giá
+                </button>
+              ) : null}
+              {(isOwner || isAdmin) && auction.status === 'live' ? (
                 <button type="button" onClick={() => onCloseAuction(auction._id)}>
-                  Dong auction
+                  Đóng đấu giá
                 </button>
               ) : null}
             </div>
           </SectionCard>
 
-          <SectionCard title="Lich su bid" subtitle={`${bids.length} luot gan nhat`} className="wide">
+          <SectionCard title="Lịch sử ra giá" subtitle={`${bids.length} lượt gần nhất`} className="wide">
             <div className="resource-list">
               {bids.map((bid) => (
                 <article key={bid._id} className="resource-item">
                   <div>
-                    <strong>{bid.bidder?.fullName || bid.bidder?.username || 'Bidder'}</strong>
+                    <strong>{bid.bidder?.fullName || bid.bidder?.username || 'Người ra giá'}</strong>
                     <p>{formatDateTime(bid.createdAt)}</p>
                   </div>
                   <div className="resource-item__meta">
                     <span>{formatPrice(bid.amount)} VND</span>
-                    <small>{bid.isWinning ? 'dang dan' : bid.status || 'bid'}</small>
+                    <small>{bid.isWinning ? 'đang dẫn' : bid.status || 'ra giá'}</small>
                   </div>
                 </article>
               ))}
               {!bids.length ? (
                 <div className="empty-state compact-empty">
-                  <strong>Chua co bid nao.</strong>
-                  <p className="muted">Khi user dat gia, lich su se hien tai day.</p>
+                  <strong>Chưa có lượt ra giá nào.</strong>
+                  <p className="muted">Khi người dùng đặt giá, lịch sử sẽ hiện tại đây.</p>
                 </div>
               ) : null}
             </div>

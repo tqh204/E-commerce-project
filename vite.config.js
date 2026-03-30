@@ -24,8 +24,15 @@ export default defineConfig({
       ],
     },
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/socket.io': 'http://localhost:3000',
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 });

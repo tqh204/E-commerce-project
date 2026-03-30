@@ -6,8 +6,8 @@ const router = express.Router();
 
 router.get('/', controller.listCategories);
 router.get('/:id', controller.getCategoryById);
-router.post('/', requireAnyRole('admin', 'moderator'), controller.createCategory);
-router.put('/:id', requireAnyRole('admin', 'moderator'), controller.updateCategory);
-router.delete('/:id', requireAnyRole('admin', 'moderator'), controller.deleteCategory);
+router.post('/', requireAnyRole('admin'), controller.createCategory);
+router.put('/:id', requireAnyRole('admin'), controller.updateCategory);
+router.delete('/:id', requireAnyRole('admin'), controller.deleteCategory);
 
 module.exports = router;

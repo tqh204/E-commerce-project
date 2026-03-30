@@ -56,11 +56,15 @@ const optionalAuth = asyncHandler(async (req, res, next) => {
   return next();
 });
 
+const hasAnyRole = (req, allowedRoles = []) => {
+  const roleSet = new Set(req.userRoles || []);
+  return allowedRoles.some((role) => roleSet.has(role));
+};
+
 const requireAnyRole = (...allowedRoles) => [
   requireAuth,
   (req, res, next) => {
-    const roleSet = new Set(req.userRoles || []);
-    if (allowedRoles.some((role) => roleSet.has(role))) {
+    if (hasAnyRole(req, allowedRoles)) {
       return next();
     }
 
@@ -74,5 +78,6 @@ module.exports = {
   requireAuth,
   optionalAuth,
   requireAnyRole,
+  hasAnyRole,
   isAdmin,
 };

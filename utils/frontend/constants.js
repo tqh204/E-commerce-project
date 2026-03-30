@@ -9,12 +9,12 @@ export const APP_NAV = [
 ];
 
 export const PRODUCT_STATUS_OPTIONS = ['draft', 'pending', 'active', 'hidden', 'sold', 'rejected', 'archived'];
-export const PRODUCT_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'for_parts', 'unknown'];
+export const PRODUCT_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'];
 export const SALE_TYPES = ['fixed_price', 'auction'];
 export const FULFILLMENT_TYPES = ['meetup', 'shipping', 'both'];
-export const ORDER_STATUS_OPTIONS = ['pending_payment', 'paid', 'processing', 'shipping', 'delivered', 'completed', 'cancelled', 'disputed'];
+export const ORDER_STATUS_OPTIONS = ['negotiating', 'processing', 'shipping', 'delivered', 'completed', 'cancelled'];
 export const AUCTION_STATUS_OPTIONS = ['scheduled', 'live', 'ended', 'cancelled'];
 export const ESCROW_ACTIONS = ['hold', 'release', 'dispute', 'refund'];
-export const ROLE_OPTIONS = ['admin', 'moderator', 'seller', 'buyer'];
+export const ROLE_OPTIONS = ['admin', 'seller', 'buyer'];
 export const MESSAGE_TYPES = ['text', 'image', 'system'];
 export const UPLOAD_OWNER_TYPES = ['product', 'message', 'user', 'category'];

@@ -1,4 +1,4 @@
-﻿import { getStoredToken, setStoredToken } from './auth';
+import { getStoredToken, setStoredToken } from './auth';
 
 const toQueryString = (params = {}) => {
   const query = new URLSearchParams();
@@ -44,10 +44,13 @@ export const api = {
   me: () => apiFetch('/api/auth/me'),
   logout: () => apiFetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }),
   categories: (params = {}) => apiFetch(`/api/categories?${toQueryString({ limit: 100, ...params })}`),
-  products: (params = {}) => apiFetch(`/api/products?${toQueryString({ limit: 24, ...params })}`),
+  products: (params = {}) => apiFetch(`/api/products?${toQueryString({ limit: 12, ...params })}`),
   product: (id) => apiFetch(`/api/products/${id}`),
+  relatedProducts: (categoryId, excludeId, params = {}) => apiFetch(`/api/products?${toQueryString({ categoryId, status: 'active', limit: 6, ...params })}`),
   createProduct: (body) => apiFetch('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   updateProduct: (id, body) => apiFetch(`/api/products/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  sellerProducts: (sellerId, params = {}) => apiFetch(`/api/products?${toQueryString({ sellerId, limit: 12, ...params })}`),
+  sellerInfo: (userId) => apiFetch(`/api/users/${userId}`),
   users: (params = {}) => apiFetch(`/api/users?${toQueryString({ limit: 20, ...params })}`),
   orders: (params = {}) => apiFetch(`/api/orders?${toQueryString({ limit: 20, ...params })}`),
   updateOrderStatus: (id, status) => apiFetch(`/api/orders/${id}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }),

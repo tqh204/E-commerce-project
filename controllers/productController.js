@@ -8,6 +8,26 @@ const {
   sendSuccess,
 } = require('../lib/http');
 
+const canModerateProducts = (req) => (req.userRoles || []).includes('admin');
+const canViewOwnSellerListings = (req) =>
+  req.user &&
+  req.query.sellerId &&
+  String(req.query.sellerId) === String(req.user._id);
+const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const applyProductStatusTimestamps = (product) => {
+  if (product.status === 'active') {
+    product.publishedAt = product.publishedAt || new Date();
+  } else if (product.status === 'draft' || product.status === 'pending') {
+    product.publishedAt = null;
+  }
+
+  if (product.status === 'sold') {
+    product.soldAt = product.soldAt || new Date();
+  } else {
+    product.soldAt = null;
+  }
+};
+
 const buildProductFilter = (req) => {
   const filter = {};
   if (req.query.categoryId) {
@@ -24,7 +44,7 @@ const buildProductFilter = (req) => {
   }
   if (req.query.status) {
     filter.status = req.query.status;
-  } else if (!(req.userRoles || []).includes('admin')) {
+  } else if (!canModerateProducts(req) && !canViewOwnSellerListings(req)) {
     filter.status = 'active';
   }
   if (req.query.minPrice || req.query.maxPrice) {
@@ -33,7 +53,9 @@ const buildProductFilter = (req) => {
     if (req.query.maxPrice) filter.price.$lte = Number(req.query.maxPrice);
   }
   if (req.query.q) {
-    filter.$text = { $search: req.query.q };
+    const keyword = String(req.query.q || '').trim();
+    const regex = new RegExp(escapeRegex(keyword), 'i');
+    filter.$or = [{ title: regex }, { description: regex }, { tags: regex }];
   }
   if (req.query.lng && req.query.lat) {
     filter.location = {
@@ -80,8 +102,20 @@ exports.getProductById = asyncHandler(async (req, res) => {
     return sendError(res, 'Product not found', 404);
   }
 
-  product.viewsCount += 1;
-  await product.save();
+  // Chỉ tăng lượt xem khi người dùng đã đăng nhập và không phải chính người bán
+  const viewerId = req.user ? String(req.user._id) : null;
+  const sellerId = String(product.seller?._id || product.seller);
+  const hasViewed = (product.viewedBy || []).some((userId) => String(userId) === viewerId);
+  if (viewerId && viewerId !== sellerId && !hasViewed) {
+    await Product.updateOne(
+      { _id: product._id, viewedBy: { $ne: req.user._id } },
+      {
+        $inc: { viewsCount: 1 },
+        $addToSet: { viewedBy: req.user._id },
+      }
+    );
+    product.viewsCount += 1;
+  }
   return sendSuccess(res, product);
 });
 
@@ -91,7 +125,10 @@ exports.createProduct = asyncHandler(async (req, res) => {
     return sendError(res, 'Category not found', 404);
   }
 
-  const product = await Product.create({
+  const city = req.body.city || req.body.province || '';
+  const region = req.body.region || city;
+
+  const product = new Product({
     seller: req.user._id,
     category: category._id,
     title: req.body.title || req.body.name,
@@ -107,10 +144,13 @@ exports.createProduct = asyncHandler(async (req, res) => {
     status: req.body.status || 'active',
     inventory: req.body.inventory,
     fulfillmentType: req.body.fulfillmentType,
+    isNegotiable: req.body.isNegotiable ?? req.body.negotiable,
     images: req.body.images,
     mediaIds: req.body.mediaIds,
     addressText: req.body.addressText || req.body.address,
-    province: req.body.province,
+    province: req.body.province || city,
+    city,
+    region,
     district: req.body.district,
     ward: req.body.ward,
     location: req.body.location,
@@ -119,6 +159,8 @@ exports.createProduct = asyncHandler(async (req, res) => {
     sourceUrl: req.body.sourceUrl,
     sourceExternalId: req.body.sourceExternalId,
   });
+  applyProductStatusTimestamps(product);
+  await product.save();
 
   return sendSuccess(res, product, null, 201);
 });
@@ -134,6 +176,16 @@ exports.updateProduct = asyncHandler(async (req, res) => {
   if (!isOwner && !isAdmin) {
     return sendError(res, 'Forbidden', 403);
   }
+
+  if (req.body.categoryId || req.body.category) {
+    const category = await Category.findById(req.body.categoryId || req.body.category);
+    if (!category) {
+      return sendError(res, 'Category not found', 404);
+    }
+  }
+
+  const city = req.body.city || req.body.province;
+  const region = req.body.region || city;
 
   Object.assign(
     product,
@@ -152,10 +204,13 @@ exports.updateProduct = asyncHandler(async (req, res) => {
       status: req.body.status,
       inventory: req.body.inventory,
       fulfillmentType: req.body.fulfillmentType,
+      isNegotiable: req.body.isNegotiable ?? req.body.negotiable,
       images: req.body.images,
       mediaIds: req.body.mediaIds,
       addressText: req.body.addressText || req.body.address,
-      province: req.body.province,
+      province: req.body.province || city,
+      city,
+      region,
       district: req.body.district,
       ward: req.body.ward,
       location: req.body.location,
@@ -164,6 +219,7 @@ exports.updateProduct = asyncHandler(async (req, res) => {
       sourceExternalId: req.body.sourceExternalId,
     })
   );
+  applyProductStatusTimestamps(product);
 
   await product.save();
   return sendSuccess(res, product);

@@ -1,4 +1,4 @@
-import { getStoredToken, setStoredToken } from './auth';
+import { clearStoredToken, getStoredToken, setStoredToken } from './auth';
 
 const toQueryString = (params = {}) => {
   const query = new URLSearchParams();
@@ -20,7 +20,35 @@ const jsonOptions = (method, body) => ({
   body: JSON.stringify(body),
 });
 
-export const apiFetch = async (path, options = {}) => {
+let refreshPromise = null;
+
+const refreshAccessToken = async () => {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.success === false || !payload?.data?.accessToken) {
+        clearStoredToken();
+        throw new Error(payload.message || 'Session expired');
+      }
+
+      setStoredToken(payload.data.accessToken);
+      return payload.data.accessToken;
+    })().finally(() => {
+      refreshPromise = null;
+    });
+  }
+
+  return refreshPromise;
+};
+
+export const apiFetch = async (path, options = {}, retryOnAuthFailure = true) => {
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
   if (token) {
@@ -39,8 +67,21 @@ export const apiFetch = async (path, options = {}) => {
     : { success: response.ok, data: await response.text() };
 
   if (!response.ok || payload.success === false) {
+    const isRefreshRequest = path === '/api/auth/refresh';
+    const shouldAttemptRefresh =
+      response.status === 401 && retryOnAuthFailure && !isRefreshRequest && !String(path).startsWith('/api/auth/login') && !String(path).startsWith('/api/auth/register');
+
+    if (shouldAttemptRefresh) {
+      try {
+        await refreshAccessToken();
+        return apiFetch(path, options, false);
+      } catch (error) {
+        clearStoredToken();
+      }
+    }
+
     if (response.status === 401) {
-      setStoredToken('');
+      clearStoredToken();
     }
     throw new Error(payload.message || `Request failed (${response.status})`);
   }
@@ -57,6 +98,8 @@ export const api = {
 
   users: (params = {}) => apiFetch(`/api/users?${toQueryString({ limit: 50, ...params })}`),
   user: (id) => apiFetch(`/api/users/${id}`),
+  myProfile: () => apiFetch('/api/users/me/profile'),
+  updateMyProfile: (body) => apiFetch('/api/users/me/profile', jsonOptions('PATCH', body)),
   updateUser: (id, body) => apiFetch(`/api/users/${id}`, jsonOptions('PUT', body)),
   deleteUser: (id) => apiFetch(`/api/users/${id}`, { method: 'DELETE' }),
 
@@ -89,6 +132,7 @@ export const api = {
   createAuction: (body) => apiFetch('/api/auctions', jsonOptions('POST', body)),
   updateAuction: (id, body) => apiFetch(`/api/auctions/${id}`, jsonOptions('PUT', body)),
   placeBid: (id, amount) => apiFetch(`/api/auctions/${id}/bids`, jsonOptions('POST', { amount })),
+  openAuction: (id, body = {}) => apiFetch(`/api/auctions/${id}/open`, jsonOptions('POST', body)),
   closeAuction: (id, body = { force: true }) => apiFetch(`/api/auctions/${id}/close`, jsonOptions('POST', body)),
   deleteAuction: (id) => apiFetch(`/api/auctions/${id}`, { method: 'DELETE' }),
 

@@ -87,8 +87,8 @@ const productSchema = new mongoose.Schema(
     },
     condition: {
       type: String,
-      enum: ['new', 'like_new', 'good', 'fair', 'for_parts', 'unknown'],
-      default: 'unknown',
+      enum: ['new', 'like_new', 'good', 'fair', 'poor'],
+      default: 'good',
       set: normalizeProductCondition,
     },
     status: {
@@ -106,6 +106,12 @@ const productSchema = new mongoose.Schema(
       type: String,
       enum: ['meetup', 'shipping', 'both'],
       default: 'both',
+      alias: 'shippingMethod',
+    },
+    isNegotiable: {
+      type: Boolean,
+      default: false,
+      alias: 'negotiable',
     },
     images: {
       type: [String],
@@ -144,6 +150,14 @@ const productSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    city: {
+      type: String,
+      default: '',
+    },
+    region: {
+      type: String,
+      default: '',
+    },
     district: {
       type: String,
       default: '',
@@ -167,6 +181,12 @@ const productSchema = new mongoose.Schema(
       min: 0,
       alias: 'views',
     },
+    viewedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
     favoritesCount: {
       type: Number,
       default: 0,

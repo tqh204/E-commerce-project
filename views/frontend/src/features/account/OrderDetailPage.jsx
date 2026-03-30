@@ -1,30 +1,74 @@
+import { useEffect, useState } from 'react';
 import SectionCard from '../../shared/SectionCard';
 import AppLink from '../../shared/AppLink';
-import { ORDER_STATUS_OPTIONS } from '@frontend-utils/constants';
 import { compactText, formatDateTime, formatPrice, joinLocation } from '@frontend-utils/format';
 
-const OrderDetailPage = ({ selectedOrder, onUpdateOrderStatus, onDeleteOrder }) => {
+const ORDER_STATUS_LABELS = {
+  negotiating: 'Chờ thương lượng',
+  processing: 'Người bán đã duyệt',
+  shipping: 'Đang giao hàng',
+  delivered: 'Đã giao',
+  completed: 'Hoàn tất',
+  cancelled: 'Đã hủy',
+};
+
+const buildOrderAddress = (order) =>
+  joinLocation(
+    order?.shippingAddress?.address,
+    order?.shippingAddress?.ward,
+    order?.shippingAddress?.district,
+    order?.shippingAddress?.province
+  );
+
+const buildAddressLabel = (address) =>
+  joinLocation(address?.fullAddress || address?.street, address?.ward, address?.district, address?.province);
+
+const OrderDetailPage = ({
+  user,
+  addresses = [],
+  selectedOrder,
+  onUpdateOrderStatus,
+  onDeleteOrder,
+  onAttachShippingAddress,
+}) => {
   const order = selectedOrder?.order;
   const items = selectedOrder?.items || [];
+  const [selectedAddressId, setSelectedAddressId] = useState('');
+
+  useEffect(() => {
+    if (!order) {
+      setSelectedAddressId('');
+      return;
+    }
+
+    const currentAddressId = order.shippingAddressRef?._id || order.shippingAddressRef;
+    const defaultAddressId = addresses.find((item) => item.isDefault)?._id || addresses[0]?._id || '';
+    setSelectedAddressId(String(currentAddressId || defaultAddressId || ''));
+  }, [addresses, order]);
+
+  const isBuyer = String(order?.buyer?._id || order?.buyer || '') === String(user?._id || '');
+  const isSeller = String(order?.seller?._id || order?.seller || '') === String(user?._id || '');
+  const addressText = order ? buildOrderAddress(order) : '';
 
   return (
     <>
       <section className="detail-intro section-card wide">
         <div>
-          <p className="eyebrow">Order detail</p>
-          <h2>Theo doi tung don hang, cap nhat trang thai va doi chieu escrow ngay tren route rieng.</h2>
+          <p className="eyebrow">Đơn hàng</p>
+          <h2>Theo dõi trạng thái thương lượng, duyệt bán và giao hàng trên một trang riêng.</h2>
         </div>
         <div className="tag-row">
-          <AppLink to="/account" className="route-pill">
-            /account
+          <AppLink to="/orders" className="route-pill">
+            Về đơn hàng
           </AppLink>
-          <span className="route-pill">{order?.status || 'dang tai du lieu'}</span>
+          <span className="route-pill">{order?.orderCode || 'Đang tải dữ liệu'}</span>
+          <span className="route-pill">{ORDER_STATUS_LABELS[order?.status] || order?.status || 'Chưa có trạng thái'}</span>
         </div>
       </section>
 
       {!order ? (
-        <SectionCard title="Dang tai order" subtitle="GET /api/orders/:id" className="wide">
-          <p className="muted">Order detail se hien o day sau khi frontend tai xong du lieu.</p>
+        <SectionCard title="Đang tải đơn hàng" subtitle="GET /api/orders/:id" className="wide">
+          <p className="muted">Chi tiết đơn hàng sẽ hiển thị ngay khi dữ liệu được tải xong.</p>
         </SectionCard>
       ) : (
         <div className="view-grid">
@@ -33,76 +77,116 @@ const OrderDetailPage = ({ selectedOrder, onUpdateOrderStatus, onDeleteOrder }) 
             subtitle={order.orderCode}
             className="wide"
             actions={
-              <div className="actions-row wrap">
-                <AppLink to={`/products/${order.product?._id || order.product}`} className="route-pill">
-                  Xem san pham
-                </AppLink>
-                {order.escrowTransaction?._id ? (
-                  <AppLink to={`/escrows/${order.escrowTransaction._id}`} className="route-pill">
-                    Mo escrow
-                  </AppLink>
-                ) : null}
-              </div>
+              <AppLink to={`/products/${order.product?._id || order.product}`} className="route-pill">
+                Xem sản phẩm
+              </AppLink>
             }
           >
             <div className="detail-stats">
               <div className="detail-stat-card">
-                <span>Trang thai</span>
-                <strong>{order.status}</strong>
+                <span>Trạng thái</span>
+                <strong>{ORDER_STATUS_LABELS[order.status] || order.status}</strong>
               </div>
               <div className="detail-stat-card">
-                <span>Tong tien</span>
+                <span>Tổng tiền</span>
                 <strong>{formatPrice(order.totalAmount)} VND</strong>
               </div>
               <div className="detail-stat-card">
-                <span>Thanh toan</span>
-                <strong>{order.paymentType || 'n/a'}</strong>
+                <span>Thanh toán</span>
+                <strong>{order.paymentType || 'Chưa có'}</strong>
               </div>
               <div className="detail-stat-card">
-                <span>Van chuyen</span>
-                <strong>{order.shippingMethod || order.shipping?.method || 'n/a'}</strong>
+                <span>Phương thức giao</span>
+                <strong>{order.shippingMethod || order.shipping?.method || 'Chưa có'}</strong>
               </div>
             </div>
 
             <div className="detail-grid">
               <div className="detail-panel">
-                <h4>Thong tin giao dich</h4>
-                <div className="meta-grid">
-                  <span>Buyer: {order.buyer?.fullName || order.buyer?.username || 'n/a'}</span>
-                  <span>Seller: {order.seller?.fullName || order.seller?.username || 'n/a'}</span>
-                  <span>Tao luc: {formatDateTime(order.createdAt)}</span>
-                  <span>Cap nhat: {formatDateTime(order.updatedAt)}</span>
-                  <span>Escrow: {order.escrowTransaction?.status || order.escrow?.status || 'n/a'}</span>
-                  <span>Shipping status: {order.shipping?.status || 'n/a'}</span>
+                <h4>Tóm tắt đơn hàng</h4>
+                <div className="order-summary-grid">
+                  <span>Người mua: {order.buyer?.fullName || order.buyer?.username || 'Chưa có'}</span>
+                  <span>Người bán: {order.seller?.fullName || order.seller?.username || 'Chưa có'}</span>
+                  <span>Tạo lúc: {formatDateTime(order.createdAt)}</span>
+                  <span>Cập nhật: {formatDateTime(order.updatedAt)}</span>
+                  <span>Phí giao hàng: {formatPrice(order.shippingFee)} VND</span>
+                  <span>Phí nền tảng: {formatPrice(order.platformFee)} VND</span>
                 </div>
               </div>
 
               <div className="detail-panel">
-                <h4>Dia chi va ghi chu</h4>
-                <p>{order.shippingAddress?.fullAddress || joinLocation(order.shippingAddress?.street, order.shippingAddress?.ward, order.shippingAddress?.district, order.shippingAddress?.province)}</p>
-                <p className="muted">{compactText(order.notes || order.buyerNotes || order.sellerNotes || 'Chua co ghi chu.', 180)}</p>
+                <h4>Địa chỉ giao hàng</h4>
+                <p>{addressText}</p>
+                <div className="order-address-meta">
+                  <span>{order.shippingAddress?.fullName || 'Chưa có người nhận'}</span>
+                  <span>{order.shippingAddress?.phone || 'Chưa có số điện thoại'}</span>
+                </div>
+                {isBuyer && addresses.length ? (
+                  <div className="order-address-form">
+                    <select value={selectedAddressId} onChange={(event) => setSelectedAddressId(event.target.value)}>
+                      {addresses.map((address) => (
+                        <option key={address._id} value={address._id}>
+                          {buildAddressLabel(address)}
+                        </option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={() => onAttachShippingAddress(order._id, selectedAddressId)} disabled={!selectedAddressId}>
+                      Gắn địa chỉ giao hàng
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
 
+            <div className="detail-panel">
+              <h4>Ghi chú và vận chuyển</h4>
+              <div className="order-summary-grid">
+                <span>Trạng thái giao hàng: {order.shipping?.status || 'pending'}</span>
+                <span>Mã vận đơn: {order.shipping?.trackingNumber || 'Chưa có'}</span>
+                <span>Đã giao lúc: {formatDateTime(order.deliveredAt)}</span>
+                <span>Hoàn tất lúc: {formatDateTime(order.completedAt)}</span>
+              </div>
+              <p className="muted">
+                {compactText(order.notes || order.buyerNotes || order.sellerNotes || 'Chưa có ghi chú cho đơn hàng này.', 220)}
+              </p>
+            </div>
+
             <div className="actions-row wrap">
-              {ORDER_STATUS_OPTIONS.map((status) => (
-                <button key={status} type="button" onClick={() => onUpdateOrderStatus(order._id, status)}>
-                  {status}
+              {isBuyer ? (
+                <button type="button" onClick={() => onUpdateOrderStatus(order._id, 'cancelled')}>
+                  Hủy yêu cầu
                 </button>
-              ))}
+              ) : null}
+              {isSeller && order.status === 'negotiating' ? (
+                <button type="button" className="primary-btn" onClick={() => onUpdateOrderStatus(order._id, 'processing')}>
+                  Duyệt bán ngay
+                </button>
+              ) : null}
+              {isSeller && order.status === 'processing' ? (
+                <button type="button" onClick={() => onUpdateOrderStatus(order._id, 'shipping')}>
+                  Bắt đầu giao hàng
+                </button>
+              ) : null}
+              {isSeller && order.status === 'shipping' ? (
+                <button type="button" onClick={() => onUpdateOrderStatus(order._id, 'completed')}>
+                  Hoàn tất đơn hàng
+                </button>
+              ) : null}
               <button type="button" onClick={() => onDeleteOrder(order._id)}>
-                Xoa order
+                Xóa đơn hàng
               </button>
             </div>
           </SectionCard>
 
-          <SectionCard title="Order items" subtitle={`${items.length} dong san pham`} className="wide">
+          <SectionCard title="Sản phẩm trong đơn" subtitle={`${items.length} dòng sản phẩm`} className="wide">
             <div className="resource-list">
               {items.map((item) => (
                 <article key={item._id} className="resource-item">
                   <div>
-                    <strong>{item.titleSnapshot || item.product?.title || 'Order item'}</strong>
-                    <p>{formatPrice(item.priceSnapshot)} VND x {item.quantity}</p>
+                    <strong>{item.titleSnapshot || item.product?.title || 'Sản phẩm'}</strong>
+                    <p>
+                      {formatPrice(item.priceSnapshot)} VND x {item.quantity}
+                    </p>
                   </div>
                   <div className="resource-item__meta">
                     <span>{formatPrice(item.total)} VND</span>
@@ -111,8 +195,8 @@ const OrderDetailPage = ({ selectedOrder, onUpdateOrderStatus, onDeleteOrder }) 
               ))}
               {!items.length ? (
                 <div className="empty-state compact-empty">
-                  <strong>Order nay chua co item rieng.</strong>
-                  <p className="muted">Neu API tra ve item, danh sach se hien tai day.</p>
+                  <strong>Đơn này chưa có dòng sản phẩm riêng.</strong>
+                  <p className="muted">Khi API trả về item, danh sách sẽ hiển thị tại đây.</p>
                 </div>
               ) : null}
             </div>

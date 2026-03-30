@@ -35,7 +35,7 @@ const SellerStorePage = ({
             </span>
             <div>
               <strong>{sellerProfile.fullName || sellerProfile.username}</strong>
-              <p className="muted">{sellerProfile.email}</p>
+              <p className="muted">{sellerProfile.bio || sellerProfile.username || 'Store profile'}</p>
             </div>
           </div>
           <div className="meta-grid">

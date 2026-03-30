@@ -36,6 +36,7 @@ const categorySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Category',
       default: null,
+      alias: 'parent_id',
     },
     level: {
       type: Number,
@@ -55,6 +56,7 @@ const categorySchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+      alias: 'is_active',
     },
     source: {
       type: String,

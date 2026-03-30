@@ -36,13 +36,13 @@ const orderSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['fixed_price', 'auction_win'],
-      default: 'fixed_price',
+      enum: ['fixed_price', 'buy_now', 'auction_win'],
+      default: 'buy_now',
     },
     paymentType: {
       type: String,
       enum: ['cod', 'wallet', 'escrow'],
-      default: 'escrow',
+      default: 'cod',
     },
     shippingMethod: {
       type: String,
@@ -189,6 +189,7 @@ const orderSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
+        'negotiating',
         'pending_payment',
         'paid',
         'processing',
@@ -198,7 +199,7 @@ const orderSchema = new mongoose.Schema(
         'cancelled',
         'disputed',
       ],
-      default: 'pending_payment',
+      default: 'negotiating',
       set: normalizeOrderStatus,
     },
     notes: {

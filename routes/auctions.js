@@ -9,6 +9,7 @@ router.get('/:id', optionalAuth, controller.getAuctionById);
 router.post('/', requireAnyRole('seller', 'admin'), controller.createAuction);
 router.put('/:id', requireAuth, controller.updateAuction);
 router.post('/:id/bids', requireAuth, controller.placeBid);
+router.post('/:id/open', requireAuth, controller.openAuction);
 router.post('/:id/close', requireAuth, controller.closeAuction);
 router.delete('/:id', requireAuth, controller.deleteAuction);
 

@@ -271,7 +271,16 @@ exports.markConversationRead = asyncHandler(async (req, res) => {
   const readAt = new Date();
   for (const message of unreadMessages) {
     message.readBy.push({ userId: req.user._id, readAt });
-    message.status = 'read';
+    const hasText = Boolean(String(message.content || '').trim());
+    const hasAttachment =
+      Array.isArray(message.attachments) && message.attachments.length > 0 ||
+      Array.isArray(message.attachmentUrls) && message.attachmentUrls.length > 0;
+
+    if (!hasText && !hasAttachment) {
+      message.status = 'deleted';
+    } else if (message.status !== 'deleted') {
+      message.status = 'read';
+    }
     await message.save();
   }
 

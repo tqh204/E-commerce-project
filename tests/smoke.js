@@ -29,7 +29,8 @@ const login = async (identifier, password) => {
   });
   assert.equal(response.status, 200);
   assert.ok(payload?.data?.accessToken);
-  return payload.data.accessToken;
+  assert.ok(payload?.data?.refreshToken);
+  return payload.data;
 };
 
 const main = async () => {
@@ -64,8 +65,71 @@ const main = async () => {
     assert.equal(openapi.response.status, 200);
     assert.equal(openapi.payload.openapi, '3.0.3');
 
-    const sellerToken = await login('seller01@example.com', 'password123');
-    const buyerToken = await login('buyer01@example.com', 'password123');
+    const sellerAuth = await login('seller01@example.com', 'password123');
+    const buyerAuth = await login('buyer01@example.com', 'password123');
+    const sellerToken = sellerAuth.accessToken;
+    const buyerToken = buyerAuth.accessToken;
+
+    const refresh = await request('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: sellerAuth.refreshToken }),
+    });
+    assert.equal(refresh.response.status, 200);
+    assert.ok(refresh.payload?.data?.accessToken);
+
+    const currentUser = await request('/api/users/me/profile', {
+      headers: { Authorization: `Bearer ${sellerToken}` },
+    });
+    assert.equal(currentUser.response.status, 200);
+    assert.equal(currentUser.payload.data.email, 'seller01@example.com');
+
+    const publicSeller = await request(`/api/users/${currentUser.payload.data._id}`);
+    assert.equal(publicSeller.response.status, 200);
+    assert.equal(publicSeller.payload.data.email, undefined);
+
+    const profileUpdate = await request('/api/users/me/profile', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${sellerToken}`,
+      },
+      body: JSON.stringify({
+        fullName: 'Nguyen Van Seller Smoke',
+        bio: 'Smoke profile update',
+      }),
+    });
+    assert.equal(profileUpdate.response.status, 200);
+    assert.equal(profileUpdate.payload.data.bio, 'Smoke profile update');
+
+    const createAddress = await request('/api/addresses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${buyerToken}`,
+      },
+      body: JSON.stringify({
+        label: 'work',
+        fullName: 'Tran Thi Buyer',
+        phone: '+84903333333',
+        province: 'Ho Chi Minh',
+        district: 'District 1',
+        ward: 'Ben Nghe',
+        street: '200 Le Loi',
+        fullAddress: '200 Le Loi, Ben Nghe, District 1, Ho Chi Minh',
+        postalCode: '700000',
+        isDefault: true,
+      }),
+    });
+    assert.equal(createAddress.response.status, 201);
+    assert.equal(createAddress.payload.data.isDefault, true);
+
+    const listAddresses = await request('/api/addresses', {
+      headers: { Authorization: `Bearer ${buyerToken}` },
+    });
+    assert.equal(listAddresses.response.status, 200);
+    assert.ok(Array.isArray(listAddresses.payload.data));
+    assert.ok(listAddresses.payload.data.some((item) => item._id === createAddress.payload.data._id));
 
     const categories = await request('/api/categories?limit=1');
     assert.equal(categories.response.status, 200);

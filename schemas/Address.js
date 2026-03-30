@@ -1,6 +1,24 @@
 const mongoose = require('mongoose');
 const { coordinatesValidator, phoneValidator, POSTAL_CODE_REGEX } = require('./validators');
 
+const locationSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ['Point'],
+      required: true,
+    },
+    coordinates: {
+      type: [Number],
+      required: true,
+      validate: coordinatesValidator,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
 const addressSchema = new mongoose.Schema(
   {
     user: {
@@ -67,16 +85,8 @@ const addressSchema = new mongoose.Schema(
       match: POSTAL_CODE_REGEX,
     },
     location: {
-      type: {
-        type: String,
-        enum: ['Point'],
-        default: 'Point',
-      },
-      coordinates: {
-        type: [Number],
-        default: [],
-        validate: coordinatesValidator,
-      },
+      type: locationSchema,
+      default: null,
     },
     isDefault: {
       type: Boolean,
