@@ -1,4 +1,4 @@
-const { EscrowTransaction, Order } = require('../schemas');
+const { EscrowTransaction } = require('../schemas');
 const {
   asyncHandler,
   buildPaginationMeta,
@@ -6,43 +6,17 @@ const {
   sendError,
   sendSuccess,
 } = require('../lib/http');
+const {
+  holdEscrowForOrder,
+  loadEscrowBundle,
+  refundEscrowToBuyer,
+  releaseEscrowToSeller,
+} = require('../lib/escrowService');
 
 const canAccessEscrow = (escrow, req) =>
   (req.userRoles || []).includes('admin') ||
   String(escrow.buyer) === String(req.user._id) ||
   String(escrow.seller) === String(req.user._id);
-
-const syncOrderEscrow = async (escrow) => {
-  const order = await Order.findById(escrow.order);
-  if (!order) {
-    return null;
-  }
-
-  order.escrow.amount = escrow.amount;
-  order.escrow.status = escrow.status;
-
-  if (escrow.status === 'held') {
-    order.status = order.status === 'pending_payment' ? 'paid' : order.status;
-  }
-
-  if (escrow.status === 'released') {
-    order.escrow.releasedAt = escrow.releasedAt;
-    order.status = 'completed';
-    order.completedAt = escrow.releasedAt || new Date();
-  }
-
-  if (escrow.status === 'refunded') {
-    order.status = 'cancelled';
-    order.cancelledAt = escrow.refundedAt || new Date();
-  }
-
-  if (escrow.status === 'disputed') {
-    order.status = 'disputed';
-  }
-
-  await order.save();
-  return order;
-};
 
 exports.listEscrows = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
@@ -87,15 +61,31 @@ exports.getEscrowById = asyncHandler(async (req, res) => {
 });
 
 const updateEscrowStatus = async ({ req, res, nextStatus, noteField = null, timestampField = null }) => {
-  const escrow = await EscrowTransaction.findById(req.params.id);
-  if (!escrow) {
+  const bundle = await loadEscrowBundle(req.params.id);
+  if (!bundle.escrow) {
     return sendError(res, 'Escrow transaction not found', 404);
   }
-  if (!canAccessEscrow(escrow, req)) {
+  if (!canAccessEscrow(bundle.escrow, req)) {
     return sendError(res, 'Forbidden', 403);
   }
 
-  escrow.status = nextStatus;
+  const { escrow, order } = bundle;
+  if (!order) {
+    return sendError(res, 'Order linked to escrow was not found', 404);
+  }
+
+  if (nextStatus === 'held') {
+    const heldEscrow = await holdEscrowForOrder(order, {
+      flowType: escrow.flowType,
+      description: req.body.reason || 'Escrow manually held',
+    });
+    if (req.body.notes !== undefined) {
+      heldEscrow.resolutionNotes = req.body.notes;
+      await heldEscrow.save();
+    }
+    return sendSuccess(res, { escrow: heldEscrow, order });
+  }
+
   if (noteField && req.body.reason) {
     escrow[noteField] = req.body.reason;
   }
@@ -105,12 +95,28 @@ const updateEscrowStatus = async ({ req, res, nextStatus, noteField = null, time
   if (timestampField) {
     escrow[timestampField] = new Date();
   }
-  if (nextStatus !== 'disputed') {
-    escrow.resolvedAt = new Date();
+
+  if (nextStatus === 'released') {
+    const released = await releaseEscrowToSeller(escrow, order, {
+      description: req.body.reason || 'Escrow released',
+    });
+    return sendSuccess(res, { escrow: released, order });
   }
 
+  if (nextStatus === 'refunded') {
+    const refunded = await refundEscrowToBuyer(escrow, order, {
+      description: req.body.reason || 'Escrow refunded',
+    });
+    return sendSuccess(res, { escrow: refunded, order });
+  }
+
+  escrow.status = nextStatus;
+  escrow.resolvedAt = nextStatus === 'disputed' ? null : new Date();
   await escrow.save();
-  const order = await syncOrderEscrow(escrow);
+  if (nextStatus === 'disputed') {
+    order.status = 'disputed';
+    await order.save();
+  }
 
   return sendSuccess(res, { escrow, order });
 };

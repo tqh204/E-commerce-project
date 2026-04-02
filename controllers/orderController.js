@@ -1,4 +1,12 @@
 const { EscrowTransaction, Order, OrderItem, Product } = require('../schemas');
+const { ensureSufficientAvailableBalance, getAvailableBalance } = require('../lib/wallet');
+const {
+  ensureEscrowRecord,
+  holdEscrowForOrder,
+  refundEscrowToBuyer,
+  releaseEscrowToSeller,
+  scheduleEscrowAutoRelease,
+} = require('../lib/escrowService');
 const {
   asyncHandler,
   buildPaginationMeta,
@@ -25,6 +33,11 @@ const normalizeShippingAddress = (payload = {}) => ({
   zipCode: String(payload.zipCode || payload.postalCode || '').trim(),
 });
 
+const loadOrderEscrow = async (order) => {
+  if (!order?.escrowTransaction) return null;
+  return EscrowTransaction.findById(order.escrowTransaction);
+};
+
 exports.listOrders = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
   const filter = {};
@@ -41,6 +54,7 @@ exports.listOrders = asyncHandler(async (req, res) => {
       .populate('buyer', 'username fullName')
       .populate('seller', 'username fullName')
       .populate('product', 'title price thumbnailImage')
+      .populate('escrowTransaction')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -94,6 +108,15 @@ exports.createOrder = asyncHandler(async (req, res) => {
   const subtotal = purchasePrice * Number(quantity || 1);
   const shippingFee = Number(req.body.shippingFee || 0);
   const platformFee = Number(req.body.platformFee || 0);
+  const totalAmount = subtotal + shippingFee + platformFee;
+
+  if (paymentType === 'wallet') {
+    ensureSufficientAvailableBalance(
+      req.user,
+      totalAmount,
+      `Insufficient wallet balance. Available: ${getAvailableBalance(req.user)}`
+    );
+  }
 
   const order = await Order.create({
     buyer: req.user._id,
@@ -108,7 +131,7 @@ exports.createOrder = asyncHandler(async (req, res) => {
     subtotal,
     shippingFee,
     platformFee,
-    totalAmount: subtotal + shippingFee + platformFee,
+    totalAmount,
     shippingAddressRef: req.body.shippingAddressId,
     shippingAddress,
     shipping: {
@@ -135,17 +158,13 @@ exports.createOrder = asyncHandler(async (req, res) => {
   });
 
   let escrowTransaction = null;
-  if (paymentType === 'escrow') {
-    escrowTransaction = await EscrowTransaction.create({
-      order: order._id,
-      buyer: req.user._id,
-      seller: product.seller,
-      amount: subtotal,
+  if (paymentType === 'escrow' || paymentType === 'wallet') {
+    escrowTransaction = await ensureEscrowRecord(order, {
+      amount: totalAmount,
       feeAmount: platformFee,
-      status: 'pending',
+      flowType: 'direct_purchase',
+      fundingSource: paymentType === 'wallet' ? 'wallet' : 'external',
     });
-    order.escrowTransaction = escrowTransaction._id;
-    await order.save();
   }
 
   return sendSuccess(res, { order, orderItem, escrowTransaction }, null, 201);
@@ -166,8 +185,8 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
   const isSeller = String(order.seller) === String(req.user._id);
 
   if (!isAdmin) {
-    const buyerAllowed = new Set(['cancelled']);
-    const sellerAllowed = new Set(['processing', 'shipping', 'delivered', 'completed', 'cancelled']);
+    const buyerAllowed = new Set(['cancelled', 'completed']);
+    const sellerAllowed = new Set(['processing', 'shipping', 'delivered', 'cancelled']);
     if (nextStatus !== order.status) {
       if (isBuyer && !buyerAllowed.has(nextStatus)) {
         return sendError(res, 'Buyer cannot update to this order status', 403);
@@ -199,10 +218,19 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
   if (req.body.buyerNotes !== undefined) order.buyerNotes = req.body.buyerNotes;
   if (req.body.sellerNotes !== undefined) order.sellerNotes = req.body.sellerNotes;
 
-  if (order.status === 'paid' && !order.paidAt) {
-    order.paidAt = new Date();
+  let escrow = await loadOrderEscrow(order);
+
+  if (order.status === 'processing') {
+    order.sellerConfirmedAt = order.sellerConfirmedAt || new Date();
+    if (!order.paidAt && (order.paymentType === 'wallet' || order.paymentType === 'escrow')) {
+      escrow = await holdEscrowForOrder(order, {
+        flowType: order.type === 'auction_win' ? 'auction_win' : order.type === 'auction_buy_now' ? 'auction_buy_now' : 'direct_purchase',
+        description: 'Funds moved from buyer wallet into escrow after seller confirmation',
+      });
+      order.paidAt = order.paidAt || new Date();
+    }
   }
-  if (order.status === 'processing' && !order.paidAt) {
+  if (order.status === 'paid' && !order.paidAt) {
     order.paidAt = new Date();
   }
   if (order.status === 'shipping') {
@@ -214,12 +242,26 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
     order.deliveredAt = order.deliveredAt || new Date();
     order.shipping.status = 'delivered';
     order.shipping.deliveredAt = order.shipping.deliveredAt || new Date();
+    if (escrow?.status === 'held') {
+      await scheduleEscrowAutoRelease(order, 5);
+    }
   }
-  if (order.status === 'completed' && !order.completedAt) {
-    order.completedAt = new Date();
+  if (order.status === 'completed') {
+    order.buyerConfirmedAt = order.buyerConfirmedAt || new Date();
+    if (escrow?.status === 'held') {
+      escrow = await releaseEscrowToSeller(escrow, order, {
+        description: 'Buyer confirmed received item',
+      });
+    }
+    order.completedAt = order.completedAt || new Date();
   }
-  if (order.status === 'cancelled' && !order.cancelledAt) {
-    order.cancelledAt = new Date();
+  if (order.status === 'cancelled') {
+    if (escrow?.status === 'held') {
+      escrow = await refundEscrowToBuyer(escrow, order, {
+        description: 'Order cancelled and wallet funds refunded to buyer',
+      });
+    }
+    order.cancelledAt = order.cancelledAt || new Date();
   }
   await order.save();
 

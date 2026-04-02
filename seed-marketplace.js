@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 const connectDB = require('./config/database');
 const { hashPassword, hashToken } = require('./lib/auth');
+const { ensureSystemRoles } = require('./lib/roles');
 const {
-  Role,
   User,
   RefreshToken,
   Address,
@@ -27,32 +27,15 @@ const upsertOne = async (Model, filter, set, setOnInsert = {}) =>
     { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
   );
 
+const computeMinimumBidStep = (baseAmount) => Math.max(20000, Math.ceil(Math.max(Number(baseAmount) || 0, 0) * 0.2));
+
 async function seedMarketplace() {
   await connectDB();
 
-  const adminRole = await upsertOne(
-    Role,
-    { name: 'admin' },
-    { description: 'Full access', permissions: ['*'], isActive: true }
-  );
-  const sellerRole = await upsertOne(
-    Role,
-    { name: 'seller' },
-    {
-      description: 'Can create and manage listings',
-      permissions: ['product:create', 'product:update', 'order:read', 'auction:create'],
-      isActive: true,
-    }
-  );
-  const buyerRole = await upsertOne(
-    Role,
-    { name: 'buyer' },
-    {
-      description: 'Can browse, bid, and place orders',
-      permissions: ['product:read', 'order:create', 'bid:create', 'chat:create'],
-      isActive: true,
-    }
-  );
+  const roles = await ensureSystemRoles();
+  const adminRole = roles.admin;
+  const userRole = roles.user;
+
   const admin = await upsertOne(
     User,
     { email: 'admin@example.com' },
@@ -74,7 +57,7 @@ async function seedMarketplace() {
       passwordHash: hashPassword('password123'),
       fullName: 'Nguyen Van Seller',
       phone: '+84902222222',
-      roles: [sellerRole._id],
+      roles: [userRole._id],
       balance: 15000000,
       ratingAvg: 4.8,
       ratingCount: 21,
@@ -91,7 +74,7 @@ async function seedMarketplace() {
       passwordHash: hashPassword('password123'),
       fullName: 'Tran Thi Buyer',
       phone: '+84903333333',
-      roles: [buyerRole._id],
+      roles: [userRole._id],
       balance: 5000000,
       ratingAvg: 4.9,
       ratingCount: 7,
@@ -213,6 +196,11 @@ async function seedMarketplace() {
       source: 'manual',
     }
   );
+
+  const shModePrice = 70000000;
+  const shModeStartingBid = 50000000;
+  const shModeBidStep = computeMinimumBidStep(shModeStartingBid);
+  const shModeCurrentBid = shModeStartingBid + shModeBidStep;
   const shMode = await upsertOne(
     Product,
     { source: 'chotot', sourceExternalId: 'chotot-vehicle-0001' },
@@ -222,11 +210,11 @@ async function seedMarketplace() {
       title: 'Honda SH Mode 2023 ABS',
       description: 'Chotot imported listing for vehicle auction demo.',
       saleType: 'auction',
-      price: 58000000,
-      startingBid: 50000000,
-      currentBid: 52000000,
-      buyNowPrice: 59000000,
-      bidStep: 500000,
+      price: shModePrice,
+      startingBid: shModeStartingBid,
+      currentBid: shModeCurrentBid,
+      buyNowPrice: shModePrice,
+      bidStep: shModeBidStep,
       condition: 'good',
       status: 'active',
       fulfillmentType: 'meetup',
@@ -251,7 +239,7 @@ async function seedMarketplace() {
       price: 16500000,
       condition: 'like_new',
       status: 'active',
-      fulfillmentType: 'delivery',
+      fulfillmentType: 'shipping',
       images: ['https://images.example.com/macbook-air-m1.jpg'],
       addressText: sellerAddress.fullAddress,
       province: sellerAddress.province,
@@ -306,10 +294,11 @@ async function seedMarketplace() {
       seller: seller._id,
       startAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
       endAt: new Date(Date.now() + 22 * 60 * 60 * 1000),
-      startingBid: 50000000,
-      currentBid: 52000000,
-      buyNowPrice: 59000000,
-      bidStep: 500000,
+      startingBid: shModeStartingBid,
+      currentBid: shModeCurrentBid,
+      buyNowPrice: shModePrice,
+      bidStep: shModeBidStep,
+      minimumBidStep: shModeBidStep,
       totalBids: 1,
       lastBidAt: new Date(),
       status: 'live',
@@ -318,7 +307,7 @@ async function seedMarketplace() {
 
   const bid = await upsertOne(
     Bid,
-    { auction: auction._id, bidder: buyer._id, amount: 52000000 },
+    { auction: auction._id, bidder: buyer._id, amount: shModeCurrentBid },
     { product: shMode._id, isWinning: true, status: 'active' }
   );
   await Auction.findByIdAndUpdate(auction._id, { winnerUser: buyer._id, winnerBid: bid._id });
@@ -373,7 +362,7 @@ async function seedMarketplace() {
     }
   );
 
-  const orderItem = await upsertOne(
+  await upsertOne(
     OrderItem,
     { order: order._id, product: iphone._id },
     {
@@ -441,17 +430,17 @@ async function seedMarketplace() {
   );
 
   console.log('Marketplace upsert seed completed successfully.');
-  console.log(`Roles: 4`);
-  console.log(`Users: 3`);
-  console.log(`Categories: 3`);
-  console.log(`Products: 3`);
-  console.log(`Auction: 1`);
-  console.log(`Orders: 1`);
-  console.log(`OrderItems: 1`);
-  console.log(`EscrowTransactions: 1`);
-  console.log(`Conversations: 1`);
-  console.log(`Messages: 2`);
-  console.log(`Reviews: 1`);
+  console.log('Roles: 2');
+  console.log('Users: 3');
+  console.log('Categories: 3');
+  console.log('Products: 3');
+  console.log('Auction: 1');
+  console.log('Orders: 1');
+  console.log('OrderItems: 1');
+  console.log('EscrowTransactions: 1');
+  console.log('Conversations: 1');
+  console.log('Messages: 2');
+  console.log('Reviews: 1');
 }
 
 seedMarketplace()

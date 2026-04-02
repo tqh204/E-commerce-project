@@ -16,6 +16,7 @@ var uploadsRouter = require('./routes/uploads');
 var importsRouter = require('./routes/imports');
 var escrowsRouter = require('./routes/escrows');
 var reviewsRouter = require('./routes/reviews');
+var walletRouter = require('./routes/wallet');
 
 var app = express();
 
@@ -38,6 +39,7 @@ app.use('/api/uploads', uploadsRouter);
 app.use('/api/imports', importsRouter);
 app.use('/api/escrows', escrowsRouter);
 app.use('/api/reviews', reviewsRouter);
+app.use('/api/wallet', walletRouter);
 
 app.use(function(req, res) {
   res.status(404).json({

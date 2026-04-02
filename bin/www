@@ -9,6 +9,7 @@ var debug = require('debug')('e-commerce:server');
 var http = require('http');
 var connectDB = require('../config/database');
 var { startAuctionLifecycleMonitor } = require('../lib/auctionLifecycle');
+var { startEscrowLifecycleMonitor } = require('../lib/escrowLifecycle');
 var { initSocket } = require('../lib/socket');
 
 /**
@@ -31,6 +32,7 @@ initSocket(server);
 
 connectDB().then(function() {
   startAuctionLifecycleMonitor();
+  startEscrowLifecycleMonitor();
 });
 
 /**

@@ -43,7 +43,12 @@ const auctionSchema = new mongoose.Schema(
     },
     bidStep: {
       type: Number,
-      default: 10000,
+      default: 20000,
+      min: 1,
+    },
+    minimumBidStep: {
+      type: Number,
+      default: 20000,
       min: 1,
     },
     winnerUser: {

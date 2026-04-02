@@ -5,11 +5,14 @@ import { compactText, formatDateTime, formatPrice, joinLocation } from '@fronten
 
 const ORDER_STATUS_LABELS = {
   negotiating: 'Chờ thương lượng',
+  pending_payment: 'Chờ thanh toán',
+  paid: 'Đã thanh toán',
   processing: 'Người bán đã duyệt',
   shipping: 'Đang giao hàng',
   delivered: 'Đã giao',
   completed: 'Hoàn tất',
   cancelled: 'Đã hủy',
+  disputed: 'Đang tranh chấp',
 };
 
 const buildOrderAddress = (order) =>
@@ -21,7 +24,12 @@ const buildOrderAddress = (order) =>
   );
 
 const buildAddressLabel = (address) =>
-  joinLocation(address?.fullAddress || address?.street, address?.ward, address?.district, address?.province);
+  joinLocation(
+    address?.fullAddress || address?.street,
+    address?.ward,
+    address?.district,
+    address?.province
+  );
 
 const OrderDetailPage = ({
   user,
@@ -62,7 +70,9 @@ const OrderDetailPage = ({
             Về đơn hàng
           </AppLink>
           <span className="route-pill">{order?.orderCode || 'Đang tải dữ liệu'}</span>
-          <span className="route-pill">{ORDER_STATUS_LABELS[order?.status] || order?.status || 'Chưa có trạng thái'}</span>
+          <span className="route-pill">
+            {ORDER_STATUS_LABELS[order?.status] || order?.status || 'Chưa có trạng thái'}
+          </span>
         </div>
       </section>
 
@@ -123,14 +133,21 @@ const OrderDetailPage = ({
                 </div>
                 {isBuyer && addresses.length ? (
                   <div className="order-address-form">
-                    <select value={selectedAddressId} onChange={(event) => setSelectedAddressId(event.target.value)}>
+                    <select
+                      value={selectedAddressId}
+                      onChange={(event) => setSelectedAddressId(event.target.value)}
+                    >
                       {addresses.map((address) => (
                         <option key={address._id} value={address._id}>
                           {buildAddressLabel(address)}
                         </option>
                       ))}
                     </select>
-                    <button type="button" onClick={() => onAttachShippingAddress(order._id, selectedAddressId)} disabled={!selectedAddressId}>
+                    <button
+                      type="button"
+                      onClick={() => onAttachShippingAddress(order._id, selectedAddressId)}
+                      disabled={!selectedAddressId}
+                    >
                       Gắn địa chỉ giao hàng
                     </button>
                   </div>
@@ -147,7 +164,13 @@ const OrderDetailPage = ({
                 <span>Hoàn tất lúc: {formatDateTime(order.completedAt)}</span>
               </div>
               <p className="muted">
-                {compactText(order.notes || order.buyerNotes || order.sellerNotes || 'Chưa có ghi chú cho đơn hàng này.', 220)}
+                {compactText(
+                  order.notes ||
+                    order.buyerNotes ||
+                    order.sellerNotes ||
+                    'Chưa có ghi chú cho đơn hàng này.',
+                  220
+                )}
               </p>
             </div>
 
@@ -158,7 +181,11 @@ const OrderDetailPage = ({
                 </button>
               ) : null}
               {isSeller && order.status === 'negotiating' ? (
-                <button type="button" className="primary-btn" onClick={() => onUpdateOrderStatus(order._id, 'processing')}>
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={() => onUpdateOrderStatus(order._id, 'processing')}
+                >
                   Duyệt bán ngay
                 </button>
               ) : null}
@@ -178,7 +205,11 @@ const OrderDetailPage = ({
             </div>
           </SectionCard>
 
-          <SectionCard title="Sản phẩm trong đơn" subtitle={`${items.length} dòng sản phẩm`} className="wide">
+          <SectionCard
+            title="Sản phẩm trong đơn"
+            subtitle={`${items.length} dòng sản phẩm`}
+            className="wide"
+          >
             <div className="resource-list">
               {items.map((item) => (
                 <article key={item._id} className="resource-item">

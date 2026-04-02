@@ -12,21 +12,21 @@ const AdminCategoriesPage = (props) => {
     <>
       <section className="workspace-hero workspace-hero--admin section-card wide">
         <div>
-          <p className="eyebrow">Admin category CRUD</p>
+          <p className="eyebrow">Quản trị danh mục</p>
           <h2>
             {props.createMode
-              ? 'Tao category trong form rieng biet.'
-              : 'Tao va quan ly category rieng biet voi form schema day du.'}
+              ? 'Tạo danh mục trong form riêng biệt.'
+              : 'Tạo và quản lý danh mục riêng biệt với form schema đầy đủ.'}
           </h2>
           <p className="muted">
-            Category gom name, slug, parent_id, icon va is_active. Day la khu rieng cho
-            taxonomy, tach khoi form tao listing.
+            Danh mục gồm name, slug, parent_id, icon và is_active. Đây là khu riêng cho
+            taxonomy, tách khỏi form tạo listing.
           </p>
         </div>
         <div className="tag-row">
           <span className="route-pill">/admin/categories</span>
           <span className="route-pill">/admin/categories/create</span>
-          <span className="route-pill">{props.categories?.length || 0} categories</span>
+          <span className="route-pill">{props.categories?.length || 0} danh mục</span>
         </div>
       </section>
       <AdminView

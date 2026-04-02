@@ -19,6 +19,7 @@ import AdminUsersPage from './features/admin/AdminUsersPage';
 import AdminCategoriesPage from './features/admin/AdminCategoriesPage';
 import AdminProductsPage from './features/admin/AdminProductsPage';
 import AdminOrdersPage from './features/admin/AdminOrdersPage';
+import AdminWalletsPage from './features/admin/AdminWalletsPage';
 import AdminImportsPage from './features/admin/AdminImportsPage';
 import AdminProductFormPage from './features/admin/AdminProductFormPage';
 import DocsPage from './features/docs/DocsPage';
@@ -38,7 +39,7 @@ import { matchPath, navigateTo } from '@frontend-utils/router';
 import { useRealtimeChat } from '@frontend-utils/useRealtimeChat';
 
 const PASSWORD_RULE_TEXT =
-  'Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.';
+  'Mat khau phai co it nhat 8 ky tu, gom chu hoa, chu thuong, so va ky tu dac biet.';
 const isStrongPassword = (value = '') =>
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(value);
 const USERNAME_RULE = /^[a-z0-9_-]{3,30}$/i;
@@ -63,7 +64,7 @@ const createRegisterForm = () => ({
   phone: '',
   password: '',
   confirmPassword: '',
-  roles: ['buyer'],
+  roles: ['user'],
 });
 const createAddressForm = (user = null) => ({
   label: 'home',
@@ -121,7 +122,7 @@ const empty = {
     bidStep: '10000',
     status: 'scheduled',
   },
-  profile: { fullName: '', phone: '', avatarUrl: '', bio: '', roles: ['buyer'] },
+  profile: { fullName: '', phone: '', avatarUrl: '', bio: '', roles: ['user'] },
   address: createAddressForm(),
   review: { orderId: '', score: '5', comment: '', isVisible: true },
   upload: { ownerType: 'product', ownerId: '', remoteUrl: '' },
@@ -195,7 +196,7 @@ const mapProfileToForm = (member) => ({
   phone: member?.phone || '',
   avatarUrl: member?.avatarUrl || '',
   bio: member?.bio || '',
-  roles: (member?.roles || []).map((role) => role?.name || role).filter((role) => ['buyer', 'seller'].includes(role)),
+  roles: (member?.roles || []).map((role) => role?.name || role).filter((role) => ['user', 'admin'].includes(role)),
 });
 const toNumber = (value) => {
   if (value === '' || value === null || value === undefined) return undefined;
@@ -254,7 +255,7 @@ const App = () => {
   const [token, setToken] = useState(() => getStoredToken());
   const [user, setUser] = useState(null);
   const [notice, setNotice] = useState(
-    'Frontend React đang được tổ chức theo từng nhóm chức năng: auth, marketplace, account, chat, seller, admin, upload, docs.'
+    'Sẵn sàng đăng nhập, tìm kiếm sản phẩm, trò chuyện và giao dịch.'
   );
   const [filters, setFilters] = useState(initialCatalogState.filters);
   const [catalogPage, setCatalogPage] = useState(initialCatalogState.page);
@@ -289,6 +290,16 @@ const App = () => {
   const [addresses, setAddresses] = useState([]);
   const [addressForm, setAddressForm] = useState(empty.address);
   const [addressEditId, setAddressEditId] = useState('');
+  const [walletTopUpForm, setWalletTopUpForm] = useState({ amount: '500000' });
+  const [walletTransactions, setWalletTransactions] = useState([]);
+  const [adminWalletUsers, setAdminWalletUsers] = useState([]);
+  const [adminWalletTransactions, setAdminWalletTransactions] = useState([]);
+  const [walletAdminForm, setWalletAdminForm] = useState({
+    userId: '',
+    amount: '500000',
+    description: 'Nạp ví từ admin',
+  });
+  const [adminWalletUserId, setAdminWalletUserId] = useState('');
   const [pendingCheckoutProductId, setPendingCheckoutProductId] = useState('');
   const [reviewForm, setReviewForm] = useState(empty.review);
   const [conversations, setConversations] = useState([]);
@@ -347,7 +358,7 @@ const App = () => {
   );
 
   const isAdmin = useMemo(() => hasAnyUserRole(user, ['admin']), [user]);
-  const canSell = useMemo(() => hasAnyUserRole(user, ['seller', 'admin']), [user]);
+  const canSell = useMemo(() => Boolean(user), [user]);
   const activeConversation = useMemo(
     () => conversations.find((item) => item._id === activeConversationId) || null,
     [conversations, activeConversationId]
@@ -487,14 +498,17 @@ const App = () => {
       setEscrows([]);
       setReviews([]);
       setConversations([]);
+      setWalletTransactions([]);
       return;
     }
-    const [addressesPayload, ordersPayload, reviewsPayload, conversationsPayload] =
+
+    const [addressesPayload, ordersPayload, reviewsPayload, conversationsPayload, walletTransactionsPayload] =
       await Promise.allSettled([
         api.addresses(),
         api.orders({ scope: 'mine' }),
         api.reviews(),
         api.conversations(),
+        api.walletTransactions(),
       ]);
 
     if (addressesPayload.status === 'fulfilled') {
@@ -509,6 +523,9 @@ const App = () => {
     if (conversationsPayload.status === 'fulfilled') {
       setConversations(conversationsPayload.value.data || []);
     }
+    if (walletTransactionsPayload.status === 'fulfilled') {
+      setWalletTransactions(walletTransactionsPayload.value.data || []);
+    }
   }, [token]);
 
   const loadAdmin = useCallback(async () => {
@@ -518,21 +535,37 @@ const App = () => {
       setAdminProducts([]);
       setAdminCategories([]);
       setAdminOrders([]);
+      setAdminWalletUsers([]);
+      setAdminWalletTransactions([]);
       return;
     }
-    const [importPayload, productsPayload, usersPayload, categoriesPayload, ordersPayload] = await Promise.all([
+
+    const [
+      importPayload,
+      productsPayload,
+      usersPayload,
+      categoriesPayload,
+      ordersPayload,
+      walletUsersPayload,
+      walletTransactionsPayload,
+    ] = await Promise.all([
       api.importBatches(),
       api.products({ limit: 80 }),
       api.users(),
       api.categories({}),
       api.orders({ scope: 'all' }),
+      api.adminWalletUsers(),
+      api.adminWalletTransactions(adminWalletUserId ? { userId: adminWalletUserId } : {}),
     ]);
+
     setUsers(usersPayload.data || []);
     setImportBatches(importPayload.data || []);
     setAdminProducts(productsPayload.data || []);
     setAdminCategories(categoriesPayload.data || []);
     setAdminOrders(ordersPayload.data || []);
-  }, [isAdmin]);
+    setAdminWalletUsers(walletUsersPayload.data || []);
+    setAdminWalletTransactions(walletTransactionsPayload.data || []);
+  }, [adminWalletUserId, isAdmin]);
 
   const refreshAll = useCallback(async () => {
     await loadPublic();
@@ -875,7 +908,7 @@ const App = () => {
       setLoginForm(createLoginForm(identifier));
       setShowLoginPassword(false);
       navigateTo('/');
-      setNotice(`Đã đăng nhập với ${payload.data.user.fullName || payload.data.user.username}.`);
+      setNotice(`Da tao tai khoan ${payload.data.user.fullName || payload.data.user.username}.`);
     },
     [loginForm, rememberAccount]
   );
@@ -915,7 +948,6 @@ const App = () => {
         fullName,
         phone,
         password,
-        roles: registerForm.roles,
       });
       setStoredToken(payload.data.accessToken);
       setToken(payload.data.accessToken);
@@ -926,7 +958,7 @@ const App = () => {
       setShowRegisterConfirmPassword(false);
       setLoginForm(createLoginForm(email || username));
       navigateTo('/');
-      setNotice(`Đã tạo tài khoản ${payload.data.user.fullName || payload.data.user.username}.`);
+      setNotice(`Da tao tai khoan ${payload.data.user.fullName || payload.data.user.username}.`);
     },
     [registerForm]
   );
@@ -944,7 +976,7 @@ const App = () => {
     setReplyTo(null);
     setMessages([]);
     navigateTo('/');
-    setNotice('Đã đăng xuất.');
+    setNotice('Da dang xuat.');
   }, []);
 
   const handleSaveProfile = useCallback(
@@ -953,9 +985,47 @@ const App = () => {
       const payload = await api.updateMyProfile(profileForm);
       setUser(payload.data);
       setProfileForm(mapProfileToForm(payload.data));
-      setNotice('Đã cập nhật hồ sơ.');
+      setNotice('Da cap nhat ho so.');
     },
     [profileForm]
+  );
+
+  const handleTopUpWallet = useCallback(
+    async (event) => {
+      event.preventDefault();
+      const amount = Number(walletTopUpForm.amount || 0);
+      if (amount <= 0) {
+        setNotice('Vui lòng nhập số tiền nạp hợp lệ.');
+        return;
+      }
+      await api.topUpWallet({ amount, source: 'frontend_account' });
+      const profilePayload = await api.me();
+      setUser(profilePayload.data || null);
+      setProfileForm(mapProfileToForm(profilePayload.data));
+      await loadPrivate();
+      setWalletTopUpForm({ amount: '500000' });
+      setNotice('Đã nạp tiền vào ví thành công.');
+    },
+    [loadPrivate, walletTopUpForm]
+  );
+
+  const handleAdminTopUpWallet = useCallback(
+    async (event) => {
+      event.preventDefault();
+      if (!walletAdminForm.userId) {
+        setNotice('Vui lòng chọn người dùng cần nạp ví.');
+        return;
+      }
+      await api.adminTopUpWallet({
+        userId: walletAdminForm.userId,
+        amount: Number(walletAdminForm.amount || 0),
+        description: walletAdminForm.description || 'Nạp ví từ admin',
+      });
+      await loadAdmin();
+      setWalletAdminForm((current) => ({ ...current, amount: '500000' }));
+      setNotice('Đã nạp ví cho người dùng.');
+    },
+    [loadAdmin, walletAdminForm]
   );
 
   const handleSaveAddress = useCallback(
@@ -993,11 +1063,11 @@ const App = () => {
       if (addressEditId) {
         const response = await api.updateAddress(addressEditId, payload);
         savedAddress = response.data || { _id: addressEditId, ...payload };
-        setNotice('Đã cập nhật địa chỉ.');
+        setNotice('Da cap nhat dia chi.');
       } else {
         const response = await api.createAddress(payload);
         savedAddress = response.data || payload;
-        setNotice('Đã tạo địa chỉ mới.');
+        setNotice('Da tao dia chi moi.');
       }
       resetAddressForm();
       await loadPrivate();
@@ -1005,7 +1075,7 @@ const App = () => {
         const orderResponse = await api.createOrder({
           productId: pendingCheckoutProductId,
           quantity: 1,
-          paymentType: 'cod',
+          paymentType: 'wallet',
           shippingMethod: 'delivery',
           shippingFee: 30000,
           platformFee: 20000,
@@ -1025,7 +1095,7 @@ const App = () => {
         if (orderId) {
           await loadOrderDetail(orderId);
           navigateTo('/orders');
-          setNotice('Đã lưu địa chỉ và tạo đơn hàng chờ xác nhận.');
+          setNotice('Da luu dia chi va tao don hang cho xac nhan.');
         }
       }
     },
@@ -1062,7 +1132,7 @@ const App = () => {
       await api.deleteAddress(addressId);
       if (addressEditId === addressId) resetAddressForm();
       await loadPrivate();
-      setNotice('Đã xóa địa chỉ.');
+      setNotice('Da xoa dia chi.');
     },
     [addressEditId, loadPrivate, resetAddressForm]
   );
@@ -1075,6 +1145,10 @@ const App = () => {
     async (orderId, status) => {
       await api.updateOrderStatus(orderId, { status });
       await loadPrivate();
+      const profilePayload = await api.me().catch(() => null);
+      if (profilePayload?.data) {
+        setUser(profilePayload.data);
+      }
       if (selectedOrder?.order?._id === orderId) {
         await loadOrderDetail(orderId);
       }
@@ -1093,7 +1167,7 @@ const App = () => {
         }
       }
       await loadPrivate();
-      setNotice('Đã xóa đơn hàng.');
+      setNotice('Da xoa don hang.');
     },
     [loadPrivate, routeOrderId, selectedOrder]
   );
@@ -1111,7 +1185,7 @@ const App = () => {
       if (selectedOrder?.order?._id === orderId) {
         await loadOrderDetail(orderId);
       }
-      setNotice('Đã gắn địa chỉ giao hàng cho đơn.');
+      setNotice('Da gan dia chi giao hang cho don.');
     },
     [addresses, loadOrderDetail, loadPrivate, selectedOrder]
   );
@@ -1121,6 +1195,10 @@ const App = () => {
       const reason = window.prompt(`Nhap ghi chu cho ${action}`, `${action} tu frontend React`) || '';
       await api.updateEscrow(escrowId, action, { reason, notes: reason });
       await loadPrivate();
+      const profilePayload = await api.me().catch(() => null);
+      if (profilePayload?.data) {
+        setUser(profilePayload.data);
+      }
       if (isAdmin) await loadAdmin();
       if (selectedEscrow?._id === escrowId) {
         await loadEscrowDetail(escrowId);
@@ -1146,7 +1224,7 @@ const App = () => {
 
   const handleRespondReview = useCallback(
     async (reviewId) => {
-      const content = window.prompt('Nội dung phản hồi review', 'Cảm ơn bạn đã đánh giá.');
+      const content = window.prompt('Noi dung phan hoi review', 'Cam on ban da danh gia.');
       if (content === null) return;
       await api.respondReview(reviewId, { content });
       await loadPrivate();
@@ -1190,15 +1268,15 @@ const App = () => {
         return;
       }
       if (!description || description.length < 10) {
-        failProduct('Mo ta san pham can ro hon, toi thieu 10 ky tu.');
+        failProduct('Mô tả sản phẩm cần rõ hơn, tối thiểu 10 ký tự.');
         return;
       }
       if (price === undefined || price < 0) {
-        failProduct('Gia san pham khong hop le.');
+        failProduct('Giá sản phẩm không hợp lệ.');
         return;
       }
       if (inventory === undefined || inventory < 0) {
-        failProduct('So luong ton kho khong hop le.');
+        failProduct('Số lượng tồn kho không hợp lệ.');
         return;
       }
       if (!productForm.condition) {
@@ -1324,7 +1402,7 @@ const App = () => {
       if (selectedAuctionDetail?.auction?._id === auctionId) {
         await loadAuctionDetail(auctionId);
       }
-      setNotice('Đã mở đấu giá sang trạng thái live.');
+      setNotice('Da mo dau gia sang trang thai live.');
     },
     [loadAuctionDetail, refreshAll, selectedAuctionDetail]
   );
@@ -1358,7 +1436,7 @@ const App = () => {
     }
     const sellerId = selectedProduct.seller?._id || selectedProduct.seller;
     if (String(sellerId) === String(user._id)) {
-      setNotice('Bạn không thể mua sản phẩm do chính mình đăng bán.');
+      setNotice('Bạn không thể mua sản phẩm do chính mình đang bán.');
       return;
     }
     const address = addresses.find((item) => item.isDefault) || addresses[0];
@@ -1367,14 +1445,14 @@ const App = () => {
       resetAddressForm();
       navigateTo('/account');
       focusAddressSection();
-      setNotice('Bạn chưa có địa chỉ giao hàng. Hãy lưu địa chỉ, hệ thống sẽ tạo đơn ngay sau đó.');
+      setNotice('Ban chua co dia chi giao hang. Hay luu dia chi, he thong se tao don ngay sau do.');
       return;
     }
 
     const response = await api.createOrder({
       productId: selectedProduct._id,
       quantity: 1,
-      paymentType: 'cod',
+      paymentType: 'wallet',
       shippingMethod: 'delivery',
       shippingFee: 30000,
       platformFee: 20000,
@@ -1416,6 +1494,26 @@ const App = () => {
     [auctions, openBidDialog, selectedAuctionDetail]
   );
 
+  const handleBuyNowAuction = useCallback(
+    async (auctionId) => {
+      const response = await api.buyNowAuction(auctionId);
+      await refreshAll();
+      const profilePayload = await api.me().catch(() => null);
+      if (profilePayload?.data) {
+        setUser(profilePayload.data);
+      }
+      if (String(pathname).startsWith('/auctions/')) {
+        await loadAuctionDetail(auctionId);
+      }
+      const orderId = response?.data?.order?._id;
+      if (orderId) {
+        navigateTo(`/orders/${orderId}`);
+      }
+      setNotice('Da mua dut phien dau gia bang vi.');
+    },
+    [loadAuctionDetail, pathname, refreshAll]
+  );
+
   const handleSubmitBidDialog = useCallback(
     async (event) => {
       event.preventDefault();
@@ -1425,10 +1523,10 @@ const App = () => {
       const minimumBid = Number(bidDialog.currentBid || 0) + Number(bidDialog.bidStep || 10000);
 
       if (!amount || Number.isNaN(amount)) {
-        throw new Error('Vui lòng nhập giá đặt hợp lệ.');
+        throw new Error('Vui long nhap gia dat hop le.');
       }
       if (amount < minimumBid) {
-        throw new Error(`Giá đặt phải từ ${minimumBid.toLocaleString('vi-VN')} VND trở lên.`);
+        throw new Error(`Gia dat phai tu ${minimumBid.toLocaleString('vi-VN')} VND tro len.`);
       }
 
       await api.placeBid(bidDialog.auctionId, amount);
@@ -1437,7 +1535,7 @@ const App = () => {
       if (String(pathname).startsWith('/auctions/')) {
         await loadAuctionDetail(bidDialog.auctionId);
       }
-      setNotice('Đã gửi lượt đặt giá thành công.');
+      setNotice('Da gui luot dat gia thanh cong.');
     },
     [bidDialog, closeBidDialog, loadAuctionDetail, pathname, refreshAll]
   );
@@ -1529,7 +1627,7 @@ const App = () => {
         return;
       }
       if (!slug) {
-        setNotice('Slug danh muc khong hop le.');
+        setNotice('Slug danh mục không hợp lệ.');
         return;
       }
       const payload = {
@@ -1751,7 +1849,7 @@ const App = () => {
     onEditAddress: handleEditAddress,
     onResetAddressForm: resetAddressForm,
     onDeleteAddress: (addressId) => run(() => handleDeleteAddress(addressId)),
-    orders: adminOrders,
+    orders,
     selectedOrder,
     onSelectOrder: selectOrderRoute,
     onUpdateOrderStatus: (orderId, status) => run(() => handleUpdateOrderStatus(orderId, status)),
@@ -1767,6 +1865,10 @@ const App = () => {
     setReviewForm,
     onCreateReview: (event) => run(() => handleCreateReview(event)),
     onRespondReview: (reviewId) => run(() => handleRespondReview(reviewId)),
+    walletTopUpForm,
+    setWalletTopUpForm,
+    onTopUpWallet: (event) => run(() => handleTopUpWallet(event)),
+    walletTransactions,
   };
 
   const commonChatProps = {
@@ -1841,6 +1943,12 @@ const App = () => {
     importBatches,
     selectedBatch,
     onSelectBatch: (batchId) => run(() => handleSelectBatch(batchId)),
+    walletUsers: adminWalletUsers,
+    walletTransactions: adminWalletTransactions,
+    walletAdminForm,
+    setWalletAdminForm,
+    onAdminTopUpWallet: (event) => run(() => handleAdminTopUpWallet(event)),
+    onSelectWalletUser: (userId) => setAdminWalletUserId(userId),
   };
 
   const mainNav = [
@@ -1848,8 +1956,7 @@ const App = () => {
     { label: 'Tài khoản', to: '/account', requiresAuth: true },
     { label: 'Đơn hàng', to: '/orders', requiresAuth: true },
     { label: 'Tin nhắn', to: '/messages', requiresAuth: true },
-    { label: 'Đăng bán', to: '/sell/products', requiresAuth: true, requiresSeller: true },
-    { label: 'Tài liệu', to: '/docs' },
+    { label: 'Đăng bán', to: '/sell/products/create', requiresAuth: true, requiresSeller: true },
     { label: 'Quản trị', to: '/admin', requiresAdmin: true },
   ];
 
@@ -1857,10 +1964,10 @@ const App = () => {
     if (pathname === '/') return 'Trang chủ';
     if (productRoute) return 'Chi tiết sản phẩm';
     if (auctionRoute) return 'Chi tiết đấu giá';
-    if (sellerStoreRoute) return 'Gian hàng người bán';
+    if (sellerStoreRoute) return 'Gian hàng';
     if (pathname === '/orders') return 'Đơn hàng';
     if (orderRoute) return 'Chi tiết đơn hàng';
-    if (escrowRoute) return 'Chi tiết escrow';
+    if (escrowRoute) return 'Chi tiết ký quỹ';
     if (pathname === '/login') return 'Đăng nhập';
     if (pathname === '/register') return 'Đăng ký';
     if (pathname === '/account') return 'Tài khoản';
@@ -1869,15 +1976,16 @@ const App = () => {
     if (pathname.startsWith('/sell/products')) return 'Quản lý sản phẩm';
     if (pathname.startsWith('/sell/auctions/create')) return 'Tạo đấu giá';
     if (pathname.startsWith('/sell/auctions')) return 'Quản lý đấu giá';
-    if (pathname.startsWith('/admin/products/create')) return 'Admin tạo sản phẩm';
-    if (pathname.startsWith('/admin/products')) return 'Admin sản phẩm';
-    if (pathname.startsWith('/admin/categories/create')) return 'Admin tạo danh mục';
-    if (pathname.startsWith('/admin/categories')) return 'Admin danh mục';
-    if (pathname.startsWith('/admin/users')) return 'Admin người dùng';
-    if (pathname.startsWith('/admin/orders')) return 'Admin vận hành';
-    if (pathname.startsWith('/admin/imports')) return 'Admin import';
-    if (pathname.startsWith('/admin')) return 'Admin dashboard';
-    if (pathname === '/docs') return 'API docs';
+    if (pathname.startsWith('/admin/products/create')) return 'Quản trị tạo sản phẩm';
+    if (pathname.startsWith('/admin/products')) return 'Quản trị sản phẩm';
+    if (pathname.startsWith('/admin/categories/create')) return 'Quản trị tạo danh mục';
+    if (pathname.startsWith('/admin/categories')) return 'Quản trị danh mục';
+    if (pathname.startsWith('/admin/users')) return 'Quản trị người dùng';
+    if (pathname.startsWith('/admin/orders')) return 'Quản trị vận hành';
+    if (pathname.startsWith('/admin/wallets')) return 'Quản trị ví tiền';
+    if (pathname.startsWith('/admin/imports')) return 'Quản trị import';
+    if (pathname.startsWith('/admin')) return 'Bảng điều khiển quản trị';
+    if (pathname === '/docs') return 'Tài liệu API';
     return 'Marketplace';
   }, [auctionRoute, escrowRoute, orderRoute, pathname, productRoute, sellerStoreRoute]);
 
@@ -1962,6 +2070,7 @@ const App = () => {
           user={user}
           isAdmin={isAdmin}
           onPlaceBidForAuction={(auctionId) => run(() => handlePlaceBidForAuction(auctionId))}
+          onBuyNowAuction={(auctionId) => run(() => handleBuyNowAuction(auctionId))}
           onOpenAuction={(auctionId) => run(() => handleOpenAuction(auctionId))}
           onCloseAuction={(auctionId) => run(() => handleCloseAuction(auctionId))}
           onEditAuction={handleEditAuction}
@@ -1993,7 +2102,7 @@ const App = () => {
             run(() => handleAttachShippingAddress(orderId, addressId))
           }
         />,
-        'Chi tiet order'
+        'Chi tiết đơn hàng'
       );
     }
     if (escrowRoute) {
@@ -2002,7 +2111,7 @@ const App = () => {
           selectedEscrow={selectedEscrow}
           onEscrowAction={(escrowId, action) => run(() => handleEscrowAction(escrowId, action))}
         />,
-        'Chi tiet escrow'
+        'Chi tiết ký quỹ'
       );
     }
     if (pathname === '/account') {
@@ -2012,53 +2121,53 @@ const App = () => {
       return renderAuthRequired(<OrdersPage {...commonAccountProps} />, 'Đơn hàng');
     }
     if (pathname === '/messages' || messageRoute) {
-      return renderAuthRequired(<MessagesPage {...commonChatProps} />, 'Tin nhan');
+      return renderAuthRequired(<MessagesPage {...commonChatProps} />, 'Tin nhắn');
     }
     if (pathname === '/sell/products') {
       return renderRoleRequired(<SellerProductsPage {...commonSellerProps} />, {
-        title: 'Quản lý listing',
+        title: 'Quản lý tin đăng',
         isAllowed: canSell,
-        requiredRoles: ['seller', 'admin'],
-        forbiddenMessage: 'Tài khoản hiện tại chưa có quyền người bán.',
+        requiredRoles: ['user', 'admin'],
+        forbiddenMessage: 'Tài khoản hiện tại chưa được phép đăng bán hoặc tạo đấu giá.',
       });
     }
     if (pathname === '/sell/products/create' || sellerEditRoute) {
       return renderRoleRequired(<SellerProductFormPage {...commonSellerProps} />, {
-        title: 'Tạo hoặc sửa listing',
+        title: 'Tạo hoặc sửa tin đăng',
         isAllowed: canSell,
-        requiredRoles: ['seller', 'admin'],
-        forbiddenMessage: 'Tài khoản hiện tại chưa có quyền người bán.',
+        requiredRoles: ['user', 'admin'],
+        forbiddenMessage: 'Tài khoản hiện tại chưa được phép đăng bán hoặc tạo đấu giá.',
       });
     }
     if (pathname === '/sell/auctions') {
       return renderRoleRequired(<SellerAuctionsPage {...commonSellerProps} />, {
         title: 'Quản lý đấu giá',
         isAllowed: canSell,
-        requiredRoles: ['seller', 'admin'],
-        forbiddenMessage: 'Tài khoản hiện tại chưa có quyền người bán.',
+        requiredRoles: ['user', 'admin'],
+        forbiddenMessage: 'Tài khoản hiện tại chưa được phép đăng bán hoặc tạo đấu giá.',
       });
     }
     if (pathname === '/sell/auctions/create') {
       return renderRoleRequired(<SellerAuctionFormPage {...commonSellerProps} />, {
         title: 'Tạo hoặc sửa đấu giá',
         isAllowed: canSell,
-        requiredRoles: ['seller', 'admin'],
-        forbiddenMessage: 'Tài khoản hiện tại chưa có quyền người bán.',
+        requiredRoles: ['user', 'admin'],
+        forbiddenMessage: 'Tài khoản hiện tại chưa được phép đăng bán hoặc tạo đấu giá.',
       });
     }
     if (pathname === '/admin') {
       return renderRoleRequired(<AdminDashboardPage {...commonAdminProps} />, {
-        title: 'Admin dashboard',
+        title: 'Bảng điều khiển quản trị',
         isAllowed: isAdmin,
         requiredRoles: ['admin'],
       });
     }
     if (pathname === '/admin/users') {
       return renderRoleRequired(<AdminUsersPage {...commonAdminProps} />, {
-        title: 'Admin nguoi dung',
+        title: 'Quản trị người dùng',
         isAllowed: isAdmin,
         requiredRoles: ['admin'],
-        forbiddenMessage: 'Chi admin moi duoc quan ly tai khoan va gan role.',
+        forbiddenMessage: 'Chỉ admin mới được quản lý tài khoản và gán role.',
       });
     }
     if (pathname === '/admin/categories' || pathname === '/admin/categories/create') {
@@ -2068,7 +2177,7 @@ const App = () => {
           createMode={pathname === '/admin/categories/create'}
         />,
         {
-          title: 'Admin danh muc',
+          title: 'Quản trị danh mục',
           isAllowed: isAdmin,
           requiredRoles: ['admin'],
         }
@@ -2076,7 +2185,7 @@ const App = () => {
     }
     if (pathname === '/admin/products') {
       return renderRoleRequired(<AdminProductsPage {...commonAdminProps} />, {
-        title: 'Admin san pham',
+        title: 'Quản trị sản phẩm',
         isAllowed: isAdmin,
         requiredRoles: ['admin'],
       });
@@ -2087,23 +2196,31 @@ const App = () => {
       adminEditRoute
     ) {
       return renderRoleRequired(<AdminProductFormPage {...commonSellerProps} />, {
-        title: 'Admin tao san pham',
+        title: 'Quản trị tạo sản phẩm',
         isAllowed: isAdmin,
         requiredRoles: ['admin'],
-        forbiddenMessage: 'Chi admin moi duoc tao hoac sua listing tu workspace admin.',
+        forbiddenMessage: 'Chỉ admin mới được tạo hoặc sửa listing từ workspace admin.',
       });
     }
     if (pathname === '/admin/orders') {
       return renderRoleRequired(<AdminOrdersPage {...commonAdminProps} />, {
-        title: 'Admin van hanh',
+        title: 'Quản trị vận hành',
         isAllowed: isAdmin,
         requiredRoles: ['admin'],
-        forbiddenMessage: 'Chi admin moi duoc truy cap van hanh order va escrow.',
+        forbiddenMessage: 'Chỉ admin mới được truy cập vận hành order và escrow.',
+      });
+    }
+    if (pathname === '/admin/wallets') {
+      return renderRoleRequired(<AdminWalletsPage {...commonAdminProps} />, {
+        title: 'Quản trị ví tiền',
+        isAllowed: isAdmin,
+        requiredRoles: ['admin'],
+        forbiddenMessage: 'Chỉ admin mới được theo dõi ví và nạp ví cho người dùng.',
       });
     }
     if (pathname === '/admin/imports') {
       return renderRoleRequired(<AdminImportsPage {...commonAdminProps} />, {
-        title: 'Admin import',
+        title: 'Quản trị import',
         isAllowed: isAdmin,
         requiredRoles: ['admin'],
       });
@@ -2134,7 +2251,7 @@ const App = () => {
             <AppLink to="/" className="brand-link">
               ChoMarket
             </AppLink>
-            <span className="muted">Mua bán đồ cũ, chat trực tiếp, đấu giá và giao dịch trực tiếp</span>
+            <span className="muted">Mua bán đồ cũ và chat trực tiếp với người bán</span>
           </div>
           {headerSearchVisible ? (
             <form className="site-search" onSubmit={handleHeaderSearch}>
@@ -2165,7 +2282,7 @@ const App = () => {
                             ? docsRoute
                             : item.to === '/admin'
                               ? adminRoute
-                              : item.to === '/sell/products'
+                              : item.to === '/sell/products/create'
                                 ? sellerRoute
                                 : pathname.startsWith(item.to);
                   return (
@@ -2195,7 +2312,7 @@ const App = () => {
                 </>
               ) : (
                 <button type="button" onClick={() => run(handleLogout)}>
-                  Đăng xuất
+                  {'\u0110\u0103ng xu\u1ea5t'}
                 </button>
               )}
             </nav>
@@ -2204,44 +2321,50 @@ const App = () => {
       </header>
 
       <main className="site-main">
-        <SectionCard
-          title={currentPageLabel}
-          subtitle="Route-based React frontend"
-          className="wide"
-          actions={
-            <div className="actions-row wrap">
-              {user ? <span className="route-pill">{user.fullName || user.username}</span> : null}
-              <span className="route-pill">Vai trò: {roleNames(user?.roles || [])}</span>
-              <span className="route-pill">Socket: {socketState}</span>
-              <span className="route-pill">Trang: {currentPageLabel}</span>
-            </div>
-          }
-        >
-          <p className="muted">{notice}</p>
-        </SectionCard>
+        {!homeRoute ? (
+          <SectionCard
+            title={currentPageLabel}
+            subtitle="Trang chức năng"
+            className="wide"
+            actions={
+              <div className="actions-row wrap">
+                {user ? <span className="route-pill">{user.fullName || user.username}</span> : null}
+                <span className="route-pill">Vai trò: {roleNames(user?.roles || [])}</span>
+                <span className="route-pill">Socket: {socketState}</span>
+                <span className="route-pill">Trang: {currentPageLabel}</span>
+              </div>
+            }
+          >
+            <p className="muted">{notice}</p>
+          </SectionCard>
+        ) : null}
 
         {sellerRoute ? (
-          <SectionCard title="Khu người bán" subtitle="Từng chức năng nằm ở trang riêng" className="wide">
+          <SectionCard
+            title="Kênh đăng bán"
+            subtitle="Toàn bộ chức năng nằm ở từng trang riêng"
+            className="wide"
+          >
             <div className="actions-row wrap">
               <AppLink to="/sell/products" className={`route-pill${pathname === '/sell/products' ? ' active' : ''}`}>
-                Danh sach tin dang
+                Danh sách tin đăng
               </AppLink>
               <AppLink
                 to="/sell/products/create"
                 className={`route-pill${pathname === '/sell/products/create' || sellerEditRoute ? ' active' : ''}`}
               >
-                Dang tin moi
+                Đăng tin mới
               </AppLink>
               {isAdmin ? (
                 <AppLink to="/admin/categories/create" className={`route-pill${pathname === '/admin/categories/create' ? ' active' : ''}`}>
-                  Tao danh muc
+                  Tạo danh mục
                 </AppLink>
               ) : null}
               <AppLink to="/sell/auctions" className={`route-pill${pathname === '/sell/auctions' ? ' active' : ''}`}>
-                Danh sach dau gia
+                Danh sách đấu giá
               </AppLink>
               <AppLink to="/sell/auctions/create" className={`route-pill${pathname === '/sell/auctions/create' ? ' active' : ''}`}>
-                Tao dau gia
+                Tạo đấu giá
               </AppLink>
             </div>
           </SectionCard>
@@ -2254,25 +2377,28 @@ const App = () => {
                 Dashboard
               </AppLink>
               <AppLink to="/admin/users" className={`route-pill${pathname === '/admin/users' ? ' active' : ''}`}>
-                Nguoi dung
+                Người dùng
               </AppLink>
               <AppLink to="/admin/categories" className={`route-pill${pathname === '/admin/categories' ? ' active' : ''}`}>
-                Danh muc
+                Danh mục
               </AppLink>
               <AppLink to="/admin/categories/create" className={`route-pill${pathname === '/admin/categories/create' ? ' active' : ''}`}>
-                Tao danh muc
+                Tạo danh mục
               </AppLink>
               <AppLink to="/admin/products" className={`route-pill${pathname === '/admin/products' ? ' active' : ''}`}>
-                San pham
+                Sản phẩm
               </AppLink>
               <AppLink
                 to="/admin/products/create"
                 className={`route-pill${pathname === '/admin/products/create' || adminEditRoute ? ' active' : ''}`}
               >
-                Tao san pham
+                Tạo sản phẩm
               </AppLink>
               <AppLink to="/admin/orders" className={`route-pill${pathname === '/admin/orders' ? ' active' : ''}`}>
-                Van hanh
+                Vận hành
+              </AppLink>
+              <AppLink to="/admin/wallets" className={`route-pill${pathname === '/admin/wallets' ? ' active' : ''}`}>
+                Ví tiền
               </AppLink>
               <AppLink to="/admin/imports" className={`route-pill${pathname === '/admin/imports' ? ' active' : ''}`}>
                 Import
@@ -2354,16 +2480,19 @@ const App = () => {
 
       <footer className="site-footer">
         <div className="site-footer__inner">
-          <span>Marketplace demo theo flow Chợ Tốt/Mercari: xem sản phẩm, chat người bán, tạo đơn hàng, đấu giá và quản trị.</span>
+          <span>
+            Marketplace demo theo flow Chợ Tốt/Mercari: xem sản phẩm, chat người bán, tạo đơn
+            hàng, đấu giá và quản trị.
+          </span>
           <div className="actions-row wrap">
             <a href="/docs.html" target="_blank" rel="noreferrer">
-              Docs cu
+              Docs cũ
             </a>
             <a href="/legacy-marketplace" target="_blank" rel="noreferrer">
-              HTML cu
+              HTML cũ
             </a>
             <a href="/admin.html" target="_blank" rel="noreferrer">
-              Admin HTML cu
+              Admin HTML cũ
             </a>
           </div>
         </div>
@@ -2373,3 +2502,5 @@ const App = () => {
 };
 
 export default App;
+
+

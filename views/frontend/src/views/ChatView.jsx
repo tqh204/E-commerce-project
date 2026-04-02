@@ -46,7 +46,11 @@ const ChatView = ({
   user,
 }) => (
   <div className="view-grid">
-    <SectionCard title="Tin nhắn" subtitle={`Trạng thái kết nối: ${socketState}`} className="wide">
+    <SectionCard
+      title="Tin nhắn"
+      subtitle={`Trạng thái kết nối: ${socketState}`}
+      className="wide"
+    >
       <div className="chat-layout chat-layout--modern">
         <aside className="conversation-column conversation-column--market chat-sidebar">
           <div className="conversation-column__head">
@@ -58,7 +62,11 @@ const ChatView = ({
             {conversations.map((conversation) => (
               <button
                 key={conversation._id}
-                className={conversation._id === activeConversationId ? 'conversation-card active' : 'conversation-card'}
+                className={
+                  conversation._id === activeConversationId
+                    ? 'conversation-card active'
+                    : 'conversation-card'
+                }
                 onClick={() => onSelectConversation(conversation._id)}
               >
                 <div className="conversation-card__avatar">
@@ -76,7 +84,9 @@ const ChatView = ({
                     ) : (
                       <small>Đã đọc</small>
                     )}
-                    <small>{conversation.product?.title ? 'Theo sản phẩm' : 'Trò chuyện trực tiếp'}</small>
+                    <small>
+                      {conversation.product?.title ? 'Theo sản phẩm' : 'Trò chuyện trực tiếp'}
+                    </small>
                   </div>
                 </div>
               </button>
@@ -93,21 +103,30 @@ const ChatView = ({
             <>
               <div className="thread-head chat-thread__head">
                 <div>
-                  <strong>{activeConversation.subject || activeConversation.product?.title || 'Cuộc trò chuyện'}</strong>
+                  <strong>
+                    {activeConversation.subject ||
+                      activeConversation.product?.title ||
+                      'Cuộc trò chuyện'}
+                  </strong>
                   <p className="muted">
                     {typingNames.length
                       ? `${typingNames.join(', ')} đang nhập...`
                       : 'Trao đổi trực tiếp với người bán để xác nhận tình trạng sản phẩm và hẹn giao dịch.'}
                   </p>
                 </div>
-                <span className="route-pill">{activeConversation.product?.title || 'Tin nhắn trực tiếp'}</span>
+                <span className="route-pill">
+                  {activeConversation.product?.title || 'Tin nhắn trực tiếp'}
+                </span>
               </div>
 
               <div className="thread-body chat-thread__body">
                 {messages.map((message) => {
                   const isSelf = String(message.sender?._id || message.sender) === String(user?._id);
                   return (
-                    <article key={message._id} className={`message-row${isSelf ? ' message-row--self' : ''}`}>
+                    <article
+                      key={message._id}
+                      className={`message-row${isSelf ? ' message-row--self' : ''}`}
+                    >
                       <div className={`message-card${isSelf ? ' self' : ''}`}>
                         <div className="message-card__head">
                           <div className="message-card__author">
@@ -115,7 +134,11 @@ const ChatView = ({
                               {avatarLabel(message.sender?.fullName || message.sender?.username || 'U')}
                             </span>
                             <div className="message-card__author-meta">
-                              <strong>{message.sender?.fullName || message.sender?.username || 'Người dùng'}</strong>
+                              <strong>
+                                {message.sender?.fullName ||
+                                  message.sender?.username ||
+                                  'Người dùng'}
+                              </strong>
                               <small>
                                 {isSelf
                                   ? message.status === 'read'
@@ -131,20 +154,32 @@ const ChatView = ({
                         </div>
 
                         {message.replyTo ? (
-                          <div className="reply-chip">Đang trả lời: {previewMessage(message.replyTo)}</div>
+                          <div className="reply-chip">
+                            Đang trả lời: {previewMessage(message.replyTo)}
+                          </div>
                         ) : null}
 
                         <p className="message-card__content">
-                          {message.status === 'deleted' ? 'Tin nhắn đã thu hồi' : message.content || '[Ảnh đính kèm]'}
+                          {message.status === 'deleted'
+                            ? 'Tin nhắn đã thu hồi'
+                            : message.content || '[Ảnh đính kèm]'}
                         </p>
 
                         {message.attachmentUrls?.length ? (
                           <div className="thumb-row message-gallery">
                             {message.attachmentUrls.map((url, index) => (
-                              <figure key={`${message._id}-${url}-${index}`} className="attachment-thumb">
+                              <figure
+                                key={`${message._id}-${url}-${index}`}
+                                className="attachment-thumb"
+                              >
                                 <img src={url} alt="Ảnh đính kèm" />
                                 {isSelf && message.attachments?.[index] ? (
-                                  <button type="button" onClick={() => onDeleteAttachment(message, message.attachments[index])}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onDeleteAttachment(message, message.attachments[index])
+                                    }
+                                  >
                                     Xóa ảnh
                                   </button>
                                 ) : null}
@@ -204,7 +239,9 @@ const ChatView = ({
                       onChange={(event) => setChatFiles(Array.from(event.target.files || []))}
                     />
                   </label>
-                  {chatFiles.length ? <p className="muted">Đang chuẩn bị {chatFiles.length} ảnh để gửi.</p> : null}
+                  {chatFiles.length ? (
+                    <p className="muted">Đang chuẩn bị {chatFiles.length} ảnh để gửi.</p>
+                  ) : null}
                 </div>
 
                 <div className="actions-row">
@@ -217,7 +254,9 @@ const ChatView = ({
           ) : (
             <div className="empty-state">
               <strong>Chọn một cuộc trò chuyện để bắt đầu.</strong>
-              <p className="muted">Khi bạn bấm chat từ sản phẩm, nội dung sẽ hiện ở đây.</p>
+              <p className="muted">
+                Khi bạn bấm chat từ sản phẩm, nội dung sẽ hiển thị ở đây.
+              </p>
             </div>
           )}
         </section>

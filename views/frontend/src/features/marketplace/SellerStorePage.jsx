@@ -1,4 +1,4 @@
-import SectionCard from '../../shared/SectionCard';
+﻿import SectionCard from '../../shared/SectionCard';
 import { formatPrice, joinLocation, roleNames } from '@frontend-utils/format';
 
 const SellerStorePage = ({
@@ -13,49 +13,49 @@ const SellerStorePage = ({
   <div className="view-grid">
     <section className="workspace-hero section-card wide">
       <div>
-        <p className="eyebrow">Nguoi ban</p>
-        <h2>{sellerProfile?.fullName || sellerProfile?.username || 'Seller store'}</h2>
+        <p className="eyebrow">Gian hàng</p>
+        <h2>{sellerProfile?.fullName || sellerProfile?.username || 'Gian hàng người dùng'}</h2>
         <p className="muted">
-          Xem cac listing dang ban, thong tin co ban va vai tro cua nguoi ban truoc khi mo chat hoac giao dich.
+          Xem các listing đang hiển thị, thông tin cơ bản và mức độ uy tín trước khi mở chat hoặc giao dịch.
         </p>
       </div>
       <div className="tag-row">
         <span className="route-pill">{roleNames(sellerProfile?.roles || [])}</span>
-        <span className="route-pill">Rating {sellerProfile?.ratingAvg || 0}</span>
+        <span className="route-pill">Đánh giá {sellerProfile?.ratingAvg || 0}</span>
         <span className="route-pill">{sellerStoreMeta?.total || sellerProducts.length} listings</span>
       </div>
     </section>
 
-    <SectionCard title="Thong tin seller" subtitle="Store profile" className="wide">
+    <SectionCard title="Thông tin gian hàng" subtitle="Hồ sơ người đăng bán" className="wide">
       {sellerProfile ? (
         <div className="seller-store-summary">
           <div className="seller-panel__head">
             <span className="seller-avatar">
-              {(sellerProfile.fullName || sellerProfile.username || 'S').slice(0, 1).toUpperCase()}
+              {(sellerProfile.fullName || sellerProfile.username || 'G').slice(0, 1).toUpperCase()}
             </span>
             <div>
               <strong>{sellerProfile.fullName || sellerProfile.username}</strong>
-              <p className="muted">{sellerProfile.bio || sellerProfile.username || 'Store profile'}</p>
+              <p className="muted">{sellerProfile.bio || sellerProfile.username || 'Người dùng ChoMarket'}</p>
             </div>
           </div>
           <div className="meta-grid">
-            <span>Phone: {sellerProfile.phone || 'n/a'}</span>
-            <span>Rating count: {sellerProfile.ratingCount || 0}</span>
-            <span>Status: {sellerProfile.isActive ? 'active' : 'inactive'}</span>
-            <span>Verified: {sellerProfile.isVerified ? 'yes' : 'no'}</span>
+            <span>Số điện thoại: {sellerProfile.phone || 'n/a'}</span>
+            <span>Số lượt đánh giá: {sellerProfile.ratingCount || 0}</span>
+            <span>Trạng thái: {sellerProfile.isActive ? 'đang hoạt động' : 'không hoạt động'}</span>
+            <span>Xác minh: {sellerProfile.isVerified ? 'đã xác minh' : 'chưa xác minh'}</span>
           </div>
         </div>
       ) : (
-        <p className="muted">Khong tim thay seller.</p>
+        <p className="muted">Không tìm thấy thông tin gian hàng.</p>
       )}
     </SectionCard>
 
-    <SectionCard title="Bo loc gian hang" subtitle="Tabs" className="wide">
+    <SectionCard title="Bộ lọc gian hàng" subtitle="Chuyển nhanh theo nhóm sản phẩm" className="wide">
       <div className="tag-row">
         {[
-          { id: 'active', label: 'Dang ban' },
-          { id: 'sold', label: 'Da ban' },
-          { id: 'auction', label: 'Auction' },
+          { id: 'active', label: 'Đang bán' },
+          { id: 'sold', label: 'Đã bán' },
+          { id: 'auction', label: 'Đấu giá' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -69,7 +69,7 @@ const SellerStorePage = ({
       </div>
     </SectionCard>
 
-    <SectionCard title="Listing cua nguoi ban" subtitle={`${sellerProducts.length} san pham`} className="wide">
+    <SectionCard title="Listing trong gian hàng" subtitle={`${sellerProducts.length} sản phẩm`} className="wide">
       {isSellerStoreLoading ? (
         <div className="skeleton-grid">
           {Array.from({ length: 4 }).map((_, index) => (
@@ -78,25 +78,25 @@ const SellerStorePage = ({
         </div>
       ) : null}
       {!isSellerStoreLoading ? (
-      <div className="resource-list cards-list">
-        {sellerProducts.map((product) => (
-          <button key={product._id} className="resource-card listing-card listing-card--compact" onClick={() => onSelectProduct(product._id)}>
-            <div className="resource-card__image listing-card__image">
-              {product.thumbnailImage ? <img src={product.thumbnailImage} alt={product.title} /> : <span>No image</span>}
-            </div>
-            <div className="listing-card__body">
-              <strong className="listing-card__title">{product.title}</strong>
-              <span className="price">{formatPrice(product.price)} VND</span>
-              <span className="muted">{joinLocation(product.ward, product.district, product.province)}</span>
-            </div>
-          </button>
-        ))}
-      </div>
+        <div className="resource-list cards-list">
+          {sellerProducts.map((product) => (
+            <button key={product._id} className="resource-card listing-card listing-card--compact" onClick={() => onSelectProduct(product._id)}>
+              <div className="resource-card__image listing-card__image">
+                {product.thumbnailImage ? <img src={product.thumbnailImage} alt={product.title} /> : <span>No image</span>}
+              </div>
+              <div className="listing-card__body">
+                <strong className="listing-card__title">{product.title}</strong>
+                <span className="price">{formatPrice(product.price)} VND</span>
+                <span className="muted">{joinLocation(product.ward, product.district, product.province)}</span>
+              </div>
+            </button>
+          ))}
+        </div>
       ) : null}
       {!isSellerStoreLoading && !sellerProducts.length ? (
         <div className="empty-state">
-          <strong>Seller nay chua co listing cho tab hien tai.</strong>
-          <p className="muted">Thu chuyen sang tab khac de xem san pham dang ban, da ban, hoac auction.</p>
+          <strong>Gian hàng này chưa có listing cho tab hiện tại.</strong>
+          <p className="muted">Thử chuyển sang tab khác để xem sản phẩm đang bán, đã bán hoặc đấu giá.</p>
         </div>
       ) : null}
     </SectionCard>

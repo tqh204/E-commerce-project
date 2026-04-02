@@ -69,6 +69,11 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    lockedBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     ratingAvg: {
       type: Number,
       default: 0,

@@ -33,6 +33,16 @@ const escrowTransactionSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    fundingSource: {
+      type: String,
+      enum: ['wallet', 'external'],
+      default: 'wallet',
+    },
+    flowType: {
+      type: String,
+      enum: ['direct_purchase', 'auction_win', 'auction_buy_now'],
+      default: 'direct_purchase',
+    },
     provider: {
       type: String,
       default: 'internal',
@@ -56,6 +66,10 @@ const escrowTransactionSchema = new mongoose.Schema(
       default: null,
     },
     disputeOpenedAt: {
+      type: Date,
+      default: null,
+    },
+    autoReleaseAt: {
       type: Date,
       default: null,
     },

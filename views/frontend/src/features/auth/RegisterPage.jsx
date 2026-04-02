@@ -1,4 +1,4 @@
-import SectionCard from '../../shared/SectionCard';
+﻿import SectionCard from '../../shared/SectionCard';
 import PasswordField from './PasswordField';
 
 const RegisterPage = ({
@@ -10,7 +10,7 @@ const RegisterPage = ({
   setShowPassword,
   onSubmit,
 }) => (
-  <SectionCard title="Đăng ký" subtitle="Auth / Register" className="wide">
+  <SectionCard title="Đăng ký" subtitle="Tạo tài khoản mới" className="wide">
     <form className="stack gap-sm auth-single" onSubmit={onSubmit}>
       <input
         value={registerForm.username}
@@ -36,18 +36,12 @@ const RegisterPage = ({
         placeholder="Số điện thoại"
         autoComplete="tel"
       />
-      <select
-        value={registerForm.roles?.includes('seller') ? 'seller' : 'buyer'}
-        onChange={(event) =>
-          setRegisterForm((current) => ({
-            ...current,
-            roles: [event.target.value],
-          }))
-        }
-      >
-        <option value="buyer">Tài khoản người mua</option>
-        <option value="seller">Tài khoản người bán</option>
-      </select>
+      <div className="workspace-note compact-note">
+        <strong>Tài khoản mặc định là user</strong>
+        <span className="muted">
+          Một tài khoản user có thể vừa đăng bán, vừa mua hàng, nhắn tin và tham gia đấu giá. Chỉ tài khoản admin mới có quyền quản trị.
+        </span>
+      </div>
       <PasswordField
         value={registerForm.password}
         onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
@@ -70,7 +64,7 @@ const RegisterPage = ({
         Mật khẩu cần có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.
       </p>
       <p className="muted auth-note">
-        Username nên dùng chữ, số, dấu gạch dưới hoặc gạch ngang.
+        Username nên dùng chữ, số, gạch dưới hoặc gạch ngang.
       </p>
       <button type="submit">Đăng ký</button>
     </form>

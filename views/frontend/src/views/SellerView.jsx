@@ -1,34 +1,35 @@
 import { useMemo, useState } from 'react';
 import AppLink from '../components/AppLink';
 import SectionCard from '../components/SectionCard';
-import { AUCTION_STATUS_OPTIONS, FULFILLMENT_TYPES, PRODUCT_CONDITIONS } from '@frontend-utils/constants';
+import { FULFILLMENT_TYPES, PRODUCT_CONDITIONS } from '@frontend-utils/constants';
 import { compactText, formatDateTime, formatPrice, joinLocation } from '@frontend-utils/format';
 
 const CONDITION_LABELS = {
-  new: 'Moi',
-  like_new: 'Nhu moi',
-  good: 'Tot',
-  fair: 'Kha',
-  poor: 'Kem',
+  new: 'Mới',
+  like_new: 'Như mới',
+  good: 'Tốt',
+  fair: 'Khá',
+  poor: 'Kém',
 };
 
 const STATUS_LABELS = {
-  draft: 'Ban nhap',
-  pending: 'Cho duyet',
-  active: 'Dang hien thi',
-  hidden: 'Da an',
-  sold: 'Da ban',
-  rejected: 'Bi tu choi',
-  archived: 'Luu tru',
+  draft: 'Bản nháp',
+  pending: 'Chờ duyệt',
+  active: 'Đang hiển thị',
+  hidden: 'Đã ẩn',
+  sold: 'Đã bán',
+  rejected: 'Bị từ chối',
+  archived: 'Lưu trữ',
 };
 
 const FULFILLMENT_LABELS = {
-  meetup: 'Gap mat truc tiep',
-  shipping: 'Giao hang',
-  both: 'Ca hai',
+  meetup: 'Gặp mặt trực tiếp',
+  shipping: 'Giao hàng',
+  both: 'Cả hai',
 };
 
-const SELLER_PRODUCT_STATUS_OPTIONS = ['draft', 'pending', 'active', 'hidden', 'sold'];
+const SELLER_PRODUCT_STATUS_OPTIONS = ['draft', 'active', 'hidden', 'sold'];
+const SELLER_AUCTION_STATUS_OPTIONS = ['scheduled', 'cancelled'];
 
 const SellerView = ({
   categories,
@@ -64,7 +65,7 @@ const SellerView = ({
   const categoryName = useMemo(
     () =>
       categories.find((category) => String(category._id) === String(productForm.categoryId))?.name ||
-      'Chua chon danh muc',
+      'Chưa chọn danh mục',
     [categories, productForm.categoryId]
   );
 
@@ -89,10 +90,10 @@ const SellerView = ({
 
   const listingSummary = useMemo(
     () => [
-      { label: 'Tong listing', value: sellerProducts.length },
-      { label: 'Dang hien thi', value: sellerProducts.filter((item) => item.status === 'active').length },
-      { label: 'Cho duyet', value: sellerProducts.filter((item) => item.status === 'pending').length },
-      { label: 'Ban nhap', value: sellerProducts.filter((item) => item.status === 'draft').length },
+      { label: 'Tổng listing', value: sellerProducts.length },
+      { label: 'Đang hiển thị', value: sellerProducts.filter((item) => item.status === 'active').length },
+      { label: 'Đã ẩn', value: sellerProducts.filter((item) => item.status === 'hidden').length },
+      { label: 'Bản nháp', value: sellerProducts.filter((item) => item.status === 'draft').length },
     ],
     [sellerProducts]
   );
@@ -113,21 +114,21 @@ const SellerView = ({
     <div className="view-grid">
       {showProductForm ? (
         <SectionCard
-          title={editingProductId ? 'Sua tin dang' : 'Dang tin moi'}
-          subtitle="Thong tin dang ban"
+          title={editingProductId ? 'Sửa tin đăng' : 'Đăng tin mới'}
+          subtitle="Thông tin đăng bán"
           className="wide"
         >
           <div className="workspace-form">
             <form className="stack gap-sm" onSubmit={onSaveProduct}>
               <div className="workspace-note">
-                <strong>Danh muc duoc tao o form rieng</strong>
+                <strong>Danh mục được tạo ở form riêng</strong>
                 <small className="muted">
-                  Neu chua co danh muc phu hop, tao danh muc truoc roi quay lai dang tin.
+                  Nếu chưa có danh mục phù hợp, tạo danh mục trước rồi quay lại đăng tin.
                 </small>
                 <div className="actions-row wrap">
                   {canManageCategories ? (
                     <AppLink to={categoryCreatePath} className="route-pill">
-                      Tao danh muc
+                      Tạo danh mục
                     </AppLink>
                   ) : (
                     <span className="route-pill">{categoryCreatePath}</span>
@@ -139,7 +140,7 @@ const SellerView = ({
                 <input
                   value={productForm.title}
                   onChange={(event) => setProductForm((current) => ({ ...current, title: event.target.value }))}
-                  placeholder="Tieu de tin dang"
+                  placeholder="Tiêu đề tin đăng"
                   required
                 />
                 <select
@@ -149,7 +150,7 @@ const SellerView = ({
                   }
                   required
                 >
-                  <option value="">Chon danh muc</option>
+                  <option value="">Chọn danh mục</option>
                   {categories.map((category) => (
                     <option key={category._id} value={category._id}>
                       {category.name}
@@ -173,13 +174,13 @@ const SellerView = ({
                   min="0"
                   value={productForm.price}
                   onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))}
-                  placeholder="Gia ban"
+                  placeholder="Giá bán"
                   required
                 />
                 <input
                   value={productForm.region}
                   onChange={(event) => setProductForm((current) => ({ ...current, region: event.target.value }))}
-                  placeholder="Khu vuc"
+                  placeholder="Khu vực"
                   required
                 />
                 <input
@@ -191,33 +192,33 @@ const SellerView = ({
                       province: event.target.value,
                     }))
                   }
-                  placeholder="Tinh / Thanh pho"
+                  placeholder="Tỉnh / Thành phố"
                   required
                 />
 
                 <input
                   value={productForm.district}
                   onChange={(event) => setProductForm((current) => ({ ...current, district: event.target.value }))}
-                  placeholder="Quan / Huyen"
+                  placeholder="Quận / Huyện"
                 />
                 <input
                   value={productForm.ward}
                   onChange={(event) => setProductForm((current) => ({ ...current, ward: event.target.value }))}
-                  placeholder="Phuong / Xa"
+                  placeholder="Phường / Xã"
                 />
                 <input
                   type="number"
                   min="0"
                   value={productForm.inventory || '1'}
                   onChange={(event) => setProductForm((current) => ({ ...current, inventory: event.target.value }))}
-                  placeholder="So luong"
+                  placeholder="Số lượng"
                 />
               </div>
 
               <label className="workspace-note upload-dropzone">
-                <strong>Anh san pham</strong>
+                <strong>Ảnh sản phẩm</strong>
                 <small className="muted">
-                  Tai len 1 hoac nhieu anh. {existingImageCount ? `Dang co ${existingImageCount} anh cu.` : ''}
+                  Tải lên 1 hoặc nhiều ảnh. {existingImageCount ? `Đang có ${existingImageCount} ảnh cũ.` : ''}
                 </small>
                 <input
                   type="file"
@@ -241,11 +242,11 @@ const SellerView = ({
                   ))}
                 </select>
                 <div className="workspace-note compact-note">
-                  <strong>Hinh thuc ban</strong>
-                  <span className="muted">Ban ngay</span>
+                  <strong>Hình thức bán</strong>
+                  <span className="muted">Bán ngay</span>
                 </div>
                 <div className="workspace-note compact-note">
-                  <strong>Trang thai</strong>
+                  <strong>Trạng thái</strong>
                   <span className="muted">{STATUS_LABELS[productForm.status] || productForm.status}</span>
                 </div>
               </div>
@@ -258,7 +259,7 @@ const SellerView = ({
                     setProductForm((current) => ({ ...current, isNegotiable: event.target.checked }))
                   }
                 />
-                <span>Cho phep thuong luong gia</span>
+                <span>Cho phép thương lượng giá</span>
               </label>
 
               <textarea
@@ -266,7 +267,7 @@ const SellerView = ({
                 onChange={(event) =>
                   setProductForm((current) => ({ ...current, description: event.target.value }))
                 }
-                placeholder="Mo ta tinh trang, phu kien di kem, ly do ban..."
+                placeholder="Mô tả tình trạng, phụ kiện đi kèm, lý do bán..."
                 rows={5}
                 required
               />
@@ -274,7 +275,7 @@ const SellerView = ({
               <input
                 value={productForm.tags}
                 onChange={(event) => setProductForm((current) => ({ ...current, tags: event.target.value }))}
-                placeholder="Tu khoa tim kiem, cach nhau boi dau phay"
+                placeholder="Từ khóa tìm kiếm, cách nhau bởi dấu phẩy"
               />
 
               <textarea
@@ -282,24 +283,24 @@ const SellerView = ({
                 onChange={(event) =>
                   setProductForm((current) => ({ ...current, addressText: event.target.value }))
                 }
-                placeholder="Dia chi hien thi hoac diem hen giao dich"
+                placeholder="Địa chỉ hiển thị hoặc điểm hẹn giao dịch"
                 rows={2}
               />
 
               <div className="actions-row">
                 <button type="submit" className="primary-btn">
-                  {editingProductId ? 'Cap nhat tin dang' : 'Dang tin'}
+                  {editingProductId ? 'Cập nhật tin đăng' : 'Đăng tin'}
                 </button>
                 <button type="button" className="ghost-btn" onClick={onResetProductForm}>
-                  Lam moi
+                  Làm mới
                 </button>
               </div>
             </form>
 
             <aside className="workspace-form__aside">
               <div className="workspace-note">
-                <strong>Xem truoc tin dang</strong>
-                <p className="muted">{productForm.title || 'Tieu de tin dang se hien o day.'}</p>
+                <strong>Xem trước tin đăng</strong>
+                <p className="muted">{productForm.title || 'Tiêu đề tin đăng sẽ hiện ở đây.'}</p>
                 <div className="tag-row">
                   <small>{categoryName}</small>
                   <small>{CONDITION_LABELS[productForm.condition] || productForm.condition}</small>
@@ -308,16 +309,16 @@ const SellerView = ({
                 <span className="price">{formatPrice(productForm.price || 0)} VND</span>
                 <small>{listingPreviewLocation}</small>
                 <small>
-                  {productForm.isNegotiable ? 'Co thuong luong' : 'Khong thuong luong'} |{' '}
+                  {productForm.isNegotiable ? 'Có thương lượng' : 'Không thương lượng'} |{' '}
                   {FULFILLMENT_LABELS[productForm.fulfillmentType] || productForm.fulfillmentType}
                 </small>
               </div>
               <div className="workspace-note">
-                <strong>Nhac nhanh</strong>
+                <strong>Nhắc nhanh</strong>
                 <ul className="sidebar-tips">
-                  <li>Tieu de ro rang se de tim kiem hon.</li>
-                  <li>Gia va khu vuc la 2 thong tin nguoi mua xem dau tien.</li>
-                  <li>Mo ta ngan gon nhung du thong tin se de chot don hon.</li>
+                  <li>Tiêu đề rõ ràng sẽ dễ tìm kiếm hơn.</li>
+                  <li>Giá và khu vực là 2 thông tin người mua xem đầu tiên.</li>
+                  <li>Mô tả ngắn gọn nhưng đủ thông tin sẽ dễ chốt đơn hơn.</li>
                 </ul>
               </div>
             </aside>
@@ -326,10 +327,10 @@ const SellerView = ({
       ) : null}
 
       {showProductList ? (
-        <SectionCard title="Listing cua toi" subtitle={`${sellerProducts.length} san pham`} className="wide">
+        <SectionCard title="Listing của tôi" subtitle={`${sellerProducts.length} sản phẩm`} className="wide">
           <div className="actions-row wrap">
             <button type="button" className="primary-btn" onClick={onResetProductForm}>
-              Tao listing moi
+              Tạo listing mới
             </button>
             {listingSummary.map((item) => (
               <span key={item.label} className="route-pill">
@@ -342,13 +343,13 @@ const SellerView = ({
             <input
               value={productQuery}
               onChange={(event) => setProductQuery(event.target.value)}
-              placeholder="Tim theo tieu de, mo ta, tags..."
+              placeholder="Tìm theo tiêu đề, mô tả, tags..."
             />
             <select
               value={productStatusFilter}
               onChange={(event) => setProductStatusFilter(event.target.value)}
             >
-              <option value="all">Tat ca trang thai</option>
+              <option value="all">Tất cả trạng thái</option>
               {SELLER_PRODUCT_STATUS_OPTIONS.map((item) => (
                 <option key={item} value={item}>
                   {STATUS_LABELS[item] || item}
@@ -357,7 +358,7 @@ const SellerView = ({
             </select>
             <div className="workspace-note compact-note">
               <strong>{filteredProducts.length}</strong>
-              <span className="muted">listing phu hop bo loc hien tai</span>
+              <span className="muted">listing phù hợp bộ lọc hiện tại</span>
             </div>
           </div>
 
@@ -371,10 +372,10 @@ const SellerView = ({
                     <small>{CONDITION_LABELS[product.condition] || product.condition}</small>
                   </div>
                   <p>{compactText(product.description, 140)}</p>
-                  <small>{product.category?.name || 'Khong ro danh muc'} | so luong {product.inventory ?? 1}</small>
+                  <small>{product.category?.name || 'Không rõ danh mục'} | số lượng {product.inventory ?? 1}</small>
                   <small>{joinLocation(product.city || product.province, product.region)}</small>
                   <small>
-                    {product.isNegotiable ? 'Co thuong luong' : 'Gia co dinh'} |{' '}
+                    {product.isNegotiable ? 'Có thương lượng' : 'Giá cố định'} |{' '}
                     {FULFILLMENT_LABELS[product.fulfillmentType] || product.fulfillmentType}
                   </small>
                   {(product.tags || []).length ? (
@@ -389,10 +390,10 @@ const SellerView = ({
                   <span>{formatPrice(product.price)} VND</span>
                   <div className="mini-actions wrap">
                     <button type="button" onClick={() => onEditProduct(product)}>
-                      Sua
+                      Sửa
                     </button>
                     <button type="button" onClick={() => onDeleteProduct(product._id)}>
-                      Xoa
+                      Xóa
                     </button>
                   </div>
                 </div>
@@ -400,8 +401,8 @@ const SellerView = ({
             ))}
             {!filteredProducts.length ? (
               <div className="empty-state compact-empty">
-                <strong>Chua co listing phu hop.</strong>
-                <p className="muted">Thu doi bo loc hoac tao listing moi de bat dau ban hang.</p>
+                <strong>Chưa có listing phù hợp.</strong>
+                <p className="muted">Thử đổi bộ lọc hoặc tạo listing mới để bắt đầu bán hàng.</p>
               </div>
             ) : null}
           </div>
@@ -420,7 +421,7 @@ const SellerView = ({
                   }
                   required
                 >
-                  <option value="">Chon san pham</option>
+                  <option value="">Chọn sản phẩm</option>
                   {sellerProducts.map((product) => (
                     <option key={product._id} value={product._id}>
                       {product.title}
@@ -433,7 +434,7 @@ const SellerView = ({
                     setAuctionForm((current) => ({ ...current, status: event.target.value }))
                   }
                 >
-                  {AUCTION_STATUS_OPTIONS.map((item) => (
+                  {SELLER_AUCTION_STATUS_OPTIONS.map((item) => (
                     <option key={item} value={item}>
                       {item === 'scheduled' ? 'scheduled - chờ mở' : item === 'live' ? 'live - đang diễn ra' : item === 'ended' ? 'ended - đã kết thúc' : item}
                     </option>
@@ -446,7 +447,7 @@ const SellerView = ({
                   onChange={(event) =>
                     setAuctionForm((current) => ({ ...current, bidStep: event.target.value }))
                   }
-                  placeholder="Buoc gia"
+                  placeholder="Bước giá"
                 />
 
                 <input
@@ -472,34 +473,34 @@ const SellerView = ({
                   onChange={(event) =>
                     setAuctionForm((current) => ({ ...current, startingBid: event.target.value }))
                   }
-                  placeholder="Gia khoi diem"
+                  placeholder="Giá khởi điểm"
                   required
                 />
               </div>
 
               <div className="actions-row">
                 <button type="submit" className="primary-btn">
-                  {auctionForm.id ? 'Cap nhat dau gia' : 'Tao dau gia'}
+                  {auctionForm.id ? 'Cập nhật đấu giá' : 'Tạo đấu giá'}
                 </button>
                 <button type="button" className="ghost-btn" onClick={onResetAuctionForm}>
-                  Lam moi
+                  Làm mới
                 </button>
               </div>
             </form>
 
             <aside className="workspace-form__aside">
               <div className="workspace-note">
-                <strong>Tong quan dau gia</strong>
+                <strong>Tổng quan đấu giá</strong>
                 <div className="tag-row">
                   <small>{auctionForm.status || 'scheduled'}</small>
-                  <small>buoc gia {formatPrice(auctionForm.bidStep || 0)}</small>
+                  <small>bước giá {formatPrice(auctionForm.bidStep || 0)}</small>
                 </div>
-                <small>San pham: {selectedAuctionProduct?.title || 'chua chon'}</small>
-                <small>Gia listing: {formatPrice(selectedAuctionProduct?.price || 0)} VND</small>
+                <small>Sản phẩm: {selectedAuctionProduct?.title || 'chưa chọn'}</small>
+                <small>Giá listing: {formatPrice(selectedAuctionProduct?.price || 0)} VND</small>
                 <span className="price">{formatPrice(auctionForm.startingBid || 0)} VND</span>
-                <small>Gia hien tai: {formatPrice(auctionForm.currentBid || auctionForm.startingBid || 0)} VND</small>
-                <small>Bat dau: {auctionForm.startAt || 'chua chon'}</small>
-                <small>Ket thuc: {auctionForm.endAt || 'chua chon'}</small>
+                <small>Giá hiện tại: {formatPrice(auctionForm.currentBid || auctionForm.startingBid || 0)} VND</small>
+                <small>Bắt đầu: {auctionForm.startAt || 'chưa chọn'}</small>
+                <small>Kết thúc: {auctionForm.endAt || 'chưa chọn'}</small>
               </div>
             </aside>
           </div>

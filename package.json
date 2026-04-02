@@ -6,6 +6,8 @@
     "start": "node ./bin/www",
     "dev:react": "vite",
     "build:react": "vite build",
+    "migrate:roles": "node migrate-role-model.js",
+    "migrate:marketplace-flow": "node migrate-marketplace-flow.js",
     "seed:marketplace": "node seed-marketplace.js",
     "check:schemas": "node -e \"require('./schemas')\"",
     "normalize:chotot": "node normalize-chotot-products.js",

@@ -1,10 +1,11 @@
-const assert = require('node:assert/strict');
+﻿const assert = require('node:assert/strict');
 const http = require('http');
 const mongoose = require('mongoose');
 
 const app = require('../app');
 const connectDB = require('../config/database');
 const { initSocket } = require('../lib/socket');
+const { Address, Conversation, Message, Product } = require('../schemas');
 
 let server;
 let baseUrl;
@@ -34,6 +35,9 @@ const login = async (identifier, password) => {
 };
 
 const main = async () => {
+  let createdAddressId = null;
+  let createdConversationId = null;
+  let createdProductId = null;
   await connectDB();
   server = http.createServer(app);
   initSocket(server);
@@ -123,6 +127,7 @@ const main = async () => {
     });
     assert.equal(createAddress.response.status, 201);
     assert.equal(createAddress.payload.data.isDefault, true);
+    createdAddressId = createAddress.payload.data._id;
 
     const listAddresses = await request('/api/addresses', {
       headers: { Authorization: `Bearer ${buyerToken}` },
@@ -155,6 +160,7 @@ const main = async () => {
     assert.equal(productCreate.response.status, 201);
     const productId = productCreate.payload.data._id;
     const sellerId = productCreate.payload.data.seller;
+    createdProductId = productId;
 
     const conversationCreate = await request('/api/conversations', {
       method: 'POST',
@@ -170,6 +176,7 @@ const main = async () => {
     });
     assert.equal(conversationCreate.response.status, 201);
     const conversationId = conversationCreate.payload.data._id;
+    createdConversationId = conversationId;
 
     const messageCreate = await request(`/api/conversations/${conversationId}/messages`, {
       method: 'POST',
@@ -215,6 +222,16 @@ const main = async () => {
 
     console.log(JSON.stringify({ ok: true, docs: true, productId, conversationId, messageId, unreadCount: matchedConversation.unreadCount }, null, 2));
   } finally {
+    if (createdConversationId) {
+      await Message.deleteMany({ conversation: createdConversationId });
+      await Conversation.deleteOne({ _id: createdConversationId });
+    }
+    if (createdProductId) {
+      await Product.deleteOne({ _id: createdProductId });
+    }
+    if (createdAddressId) {
+      await Address.deleteOne({ _id: createdAddressId });
+    }
     if (server) {
       await new Promise((resolve) => server.close(resolve));
     }
@@ -226,6 +243,7 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
 
 
 

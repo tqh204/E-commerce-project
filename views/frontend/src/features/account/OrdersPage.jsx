@@ -1,19 +1,23 @@
-import AppLink from '../../shared/AppLink';
+﻿import AppLink from '../../shared/AppLink';
 import SectionCard from '../../shared/SectionCard';
 import { formatDateTime, formatPrice, joinLocation } from '@frontend-utils/format';
 
 const ORDER_STATUS_LABELS = {
   negotiating: 'Chờ thương lượng',
-  processing: 'Người bán đã duyệt',
+  pending_payment: 'Chờ thanh toán',
+  paid: 'Đã thanh toán',
+  processing: 'Người bán đã xác nhận',
   shipping: 'Đang giao hàng',
-  delivered: 'Đã giao',
+  delivered: 'Đã giao hàng',
   completed: 'Hoàn tất',
   cancelled: 'Đã hủy',
+  disputed: 'Đang tranh chấp',
 };
 
 const SHIPPING_METHOD_LABELS = {
   delivery: 'Giao hàng',
   meetup: 'Gặp mặt',
+  pickup: 'Tự đến lấy',
 };
 
 const orderAddressText = (order) =>
@@ -62,7 +66,11 @@ const OrdersPage = ({
           return (
             <article
               key={order._id}
-              className={selectedOrder?.order?._id === order._id ? 'resource-item active order-card' : 'resource-item order-card'}
+              className={
+                selectedOrder?.order?._id === order._id
+                  ? 'resource-item active order-card'
+                  : 'resource-item order-card'
+              }
             >
               <div className="order-card__content">
                 <div className="order-card__head">
@@ -77,8 +85,16 @@ const OrdersPage = ({
                 </div>
 
                 <div className="tag-row">
-                  <span className="route-pill">{isBuyer ? 'Bạn là người mua' : isSeller ? 'Bạn là người bán' : 'Đơn liên quan'}</span>
-                  <span className="route-pill">{SHIPPING_METHOD_LABELS[order.shippingMethod] || order.shippingMethod || 'Giao hàng'}</span>
+                  <span className="route-pill">
+                    {isBuyer
+                      ? 'Bạn là người mua'
+                      : isSeller
+                        ? 'Bạn là người bán'
+                        : 'Đơn liên quan'}
+                  </span>
+                  <span className="route-pill">
+                    {SHIPPING_METHOD_LABELS[order.shippingMethod] || order.shippingMethod || 'Giao hàng'}
+                  </span>
                   {isSeller && order.status === 'negotiating' ? (
                     <span className="route-pill route-pill--highlight">Có người muốn giao dịch</span>
                   ) : null}
@@ -97,32 +113,58 @@ const OrdersPage = ({
                 </AppLink>
 
                 {isBuyer && addresses.length ? (
-                  <button type="button" onClick={() => onAttachShippingAddress(order._id, shippingAddressId)}>
+                  <button
+                    type="button"
+                    onClick={() => onAttachShippingAddress(order._id, shippingAddressId)}
+                  >
                     Gắn địa chỉ
                   </button>
                 ) : null}
 
-                {isBuyer ? (
-                  <button type="button" onClick={() => onUpdateOrderStatus(order._id, 'cancelled')}>
+                {isBuyer && ['negotiating', 'pending_payment'].includes(order.status) ? (
+                  <button
+                    type="button"
+                    onClick={() => onUpdateOrderStatus(order._id, 'cancelled')}
+                  >
                     Hủy yêu cầu
                   </button>
                 ) : null}
 
                 {isSeller && order.status === 'negotiating' ? (
-                  <button type="button" className="primary-btn" onClick={() => onUpdateOrderStatus(order._id, 'processing')}>
-                    Duyệt bán ngay
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={() => onUpdateOrderStatus(order._id, 'processing')}
+                  >
+                    Xác nhận còn hàng
                   </button>
                 ) : null}
 
                 {isSeller && order.status === 'processing' ? (
-                  <button type="button" onClick={() => onUpdateOrderStatus(order._id, 'shipping')}>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateOrderStatus(order._id, 'shipping')}
+                  >
                     Bắt đầu giao hàng
                   </button>
                 ) : null}
 
                 {isSeller && order.status === 'shipping' ? (
-                  <button type="button" onClick={() => onUpdateOrderStatus(order._id, 'completed')}>
-                    Hoàn tất đơn
+                  <button
+                    type="button"
+                    onClick={() => onUpdateOrderStatus(order._id, 'delivered')}
+                  >
+                    Xác nhận đã giao
+                  </button>
+                ) : null}
+
+                {isBuyer && order.status === 'delivered' ? (
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={() => onUpdateOrderStatus(order._id, 'completed')}
+                  >
+                    Tôi đã nhận hàng
                   </button>
                 ) : null}
 
@@ -137,7 +179,9 @@ const OrdersPage = ({
         {!orders.length ? (
           <div className="empty-state compact-empty">
             <strong>Chưa có đơn hàng liên quan.</strong>
-            <p className="muted">Khi bạn mua sản phẩm hoặc có người muốn mua sản phẩm của bạn, đơn hàng sẽ xuất hiện tại đây.</p>
+            <p className="muted">
+              Khi bạn mua sản phẩm hoặc có người muốn mua sản phẩm của bạn, đơn hàng sẽ xuất hiện tại đây.
+            </p>
           </div>
         ) : null}
       </div>

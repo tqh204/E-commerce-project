@@ -63,26 +63,10 @@ exports.register = asyncHandler(async (req, res) => {
   }
 
   const rolesByName = await ensureSystemRoles();
-  const requestedRoles = Array.isArray(req.body.roles)
-    ? req.body.roles
-    : req.body.role
-      ? [req.body.role]
-      : [];
-  const allowedSelfServiceRoles = new Set(['buyer', 'seller']);
-  const selectedRoleNames = [
-    ...new Set(
-      requestedRoles
-        .map((role) => `${role || ''}`.trim().toLowerCase())
-        .filter((role) => allowedSelfServiceRoles.has(role))
-    ),
-  ];
-  if (!selectedRoleNames.length) {
-    selectedRoleNames.push('buyer');
+  const defaultRole = rolesByName.user;
+  if (!defaultRole) {
+    return sendError(res, 'Default user role is missing', 500);
   }
-
-  const selectedRoles = selectedRoleNames
-    .map((name) => rolesByName[name])
-    .filter(Boolean);
 
   const user = await User.create({
     username,
@@ -90,7 +74,7 @@ exports.register = asyncHandler(async (req, res) => {
     passwordHash: hashPassword(password),
     fullName,
     phone,
-    roles: selectedRoles.map((role) => role._id),
+    roles: [defaultRole._id],
   });
 
   const tokens = await issueTokens(user, req);

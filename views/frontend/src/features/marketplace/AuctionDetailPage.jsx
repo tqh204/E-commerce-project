@@ -1,4 +1,4 @@
-import SectionCard from '../../shared/SectionCard';
+﻿import SectionCard from '../../shared/SectionCard';
 import AppLink from '../../shared/AppLink';
 import { formatDateTime, formatPrice } from '@frontend-utils/format';
 
@@ -7,20 +7,24 @@ const AuctionDetailPage = ({
   user,
   isAdmin,
   onPlaceBidForAuction,
+  onBuyNowAuction,
   onOpenAuction,
   onCloseAuction,
   onEditAuction,
 }) => {
   const auction = selectedAuctionDetail?.auction;
   const bids = selectedAuctionDetail?.bids || [];
-  const isOwner = user?._id && auction?.seller && String(auction.seller._id || auction.seller) === String(user._id);
+  const isOwner =
+    user?._id &&
+    auction?.seller &&
+    String(auction.seller._id || auction.seller) === String(user._id);
 
   return (
     <>
       <section className="detail-intro section-card wide">
         <div>
           <p className="eyebrow">Đấu giá</p>
-          <h2>Theo dõi giá hiện tại, lịch sử ra giá và mở hoặc đóng phiên đấu giá trên trang riêng.</h2>
+          <h2>Theo dõi giá hiện tại, lịch sử ra giá và mua đứt trực tiếp nếu phiên có hỗ trợ.</h2>
         </div>
         <div className="tag-row">
           <AppLink to="/" className="route-pill">
@@ -32,7 +36,7 @@ const AuctionDetailPage = ({
 
       {!auction ? (
         <SectionCard title="Đang tải đấu giá" subtitle="GET /api/auctions/:id" className="wide">
-          <p className="muted">Chi tiết đấu giá sẽ hiện ở đây sau khi tải xong dữ liệu.</p>
+          <p className="muted">Chi tiết đấu giá sẽ hiển thị ở đây sau khi tải xong dữ liệu.</p>
         </SectionCard>
       ) : (
         <div className="view-grid">
@@ -48,7 +52,11 @@ const AuctionDetailPage = ({
                   </AppLink>
                 ) : null}
                 {isOwner ? (
-                  <button type="button" className="route-pill route-pill--button" onClick={() => onEditAuction(auction)}>
+                  <button
+                    type="button"
+                    className="route-pill route-pill--button"
+                    onClick={() => onEditAuction(auction)}
+                  >
                     Sửa đấu giá
                   </button>
                 ) : null}
@@ -66,7 +74,7 @@ const AuctionDetailPage = ({
               </div>
               <div className="detail-stat-card">
                 <span>Người đang dẫn</span>
-                <strong>{auction.winnerUser?.fullName || auction.winnerUser?.username || 'chưa có'}</strong>
+                <strong>{auction.winnerUser?.fullName || auction.winnerUser?.username || 'Chưa có'}</strong>
               </div>
               <div className="detail-stat-card">
                 <span>Tổng lượt ra giá</span>
@@ -86,7 +94,7 @@ const AuctionDetailPage = ({
               </div>
 
               <div className="detail-panel">
-                <h4>Người bán</h4>
+                <h4>Người mở đấu giá</h4>
                 <p>{auction.seller?.fullName || auction.seller?.username || 'n/a'}</p>
                 <div className="actions-row wrap">
                   <AppLink to={`/users/${auction.seller?._id || auction.seller}`} className="route-pill">
@@ -104,6 +112,16 @@ const AuctionDetailPage = ({
               >
                 Đặt giá ngay
               </button>
+              {auction.buyNowPrice ? (
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={() => onBuyNowAuction(auction._id)}
+                  disabled={!user || isOwner || !['scheduled', 'live'].includes(auction.status)}
+                >
+                  Mua đứt {formatPrice(auction.buyNowPrice)} VND
+                </button>
+              ) : null}
               {(isOwner || isAdmin) && auction.status !== 'live' ? (
                 <button type="button" onClick={() => onOpenAuction(auction._id)}>
                   Mở đấu giá
@@ -134,7 +152,7 @@ const AuctionDetailPage = ({
               {!bids.length ? (
                 <div className="empty-state compact-empty">
                   <strong>Chưa có lượt ra giá nào.</strong>
-                  <p className="muted">Khi người dùng đặt giá, lịch sử sẽ hiện tại đây.</p>
+                  <p className="muted">Khi người dùng đặt giá, lịch sử sẽ hiển thị tại đây.</p>
                 </div>
               ) : null}
             </div>

@@ -48,10 +48,10 @@ const applyUserUpdate = async (user, req, permissions) => {
     payload.passwordHash = hashPassword(req.body.password);
   }
 
-  if ((permissions.canManageRoles || permissions.canManageOwnRoles) && Array.isArray(req.body.roles)) {
-    const requestedRoles = permissions.canManageOwnRoles
-      ? req.body.roles.filter((role) => ['buyer', 'seller'].includes(role))
-      : req.body.roles;
+  if (permissions.canManageRoles && Array.isArray(req.body.roles)) {
+    const requestedRoles = req.body.roles
+      .map((role) => `${role || ''}`.trim().toLowerCase())
+      .filter((role) => ['user', 'admin'].includes(role));
     const roles = await Role.find({ name: { $in: requestedRoles } });
     payload.roles = roles.map((role) => role._id);
   }
@@ -101,7 +101,6 @@ exports.updateCurrentProfile = asyncHandler(async (req, res) => {
     canChangePassword: true,
     canModerate: false,
     canManageRoles: false,
-    canManageOwnRoles: true,
   });
 
   return sendSuccess(res, sanitizeUser(hydrated, { privateView: true }));

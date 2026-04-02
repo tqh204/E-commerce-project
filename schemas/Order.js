@@ -36,7 +36,7 @@ const orderSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['fixed_price', 'buy_now', 'auction_win'],
+      enum: ['fixed_price', 'buy_now', 'auction_win', 'auction_buy_now'],
       default: 'buy_now',
     },
     paymentType: {
@@ -218,6 +218,14 @@ const orderSchema = new mongoose.Schema(
       default: '',
     },
     paidAt: {
+      type: Date,
+      default: null,
+    },
+    sellerConfirmedAt: {
+      type: Date,
+      default: null,
+    },
+    buyerConfirmedAt: {
       type: Date,
       default: null,
     },

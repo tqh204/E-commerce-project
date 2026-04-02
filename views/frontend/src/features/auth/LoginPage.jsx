@@ -1,4 +1,4 @@
-import SectionCard from '../../shared/SectionCard';
+﻿import SectionCard from '../../shared/SectionCard';
 import PasswordField from './PasswordField';
 
 const LoginPage = ({
@@ -10,7 +10,7 @@ const LoginPage = ({
   setShowPassword,
   onSubmit,
 }) => (
-  <SectionCard title="Đăng nhập" subtitle="Auth / Login" className="wide">
+  <SectionCard title="Đăng nhập" subtitle="Tài khoản" className="wide">
     <form className="stack gap-sm auth-single" onSubmit={onSubmit}>
       <input
         value={loginForm.identifier}
@@ -35,7 +35,7 @@ const LoginPage = ({
           checked={rememberAccount}
           onChange={(event) => setRememberAccount(event.target.checked)}
         />
-        <span>Lưu tài khoản để lần sau tự điền lại</span>
+        <span>Ghi nhớ tài khoản để lần sau tự điền lại</span>
       </label>
       <button type="submit">Đăng nhập</button>
     </form>

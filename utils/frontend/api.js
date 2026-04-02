@@ -132,6 +132,7 @@ export const api = {
   createAuction: (body) => apiFetch('/api/auctions', jsonOptions('POST', body)),
   updateAuction: (id, body) => apiFetch(`/api/auctions/${id}`, jsonOptions('PUT', body)),
   placeBid: (id, amount) => apiFetch(`/api/auctions/${id}/bids`, jsonOptions('POST', { amount })),
+  buyNowAuction: (id) => apiFetch(`/api/auctions/${id}/buy-now`, jsonOptions('POST', {})),
   openAuction: (id, body = {}) => apiFetch(`/api/auctions/${id}/open`, jsonOptions('POST', body)),
   closeAuction: (id, body = { force: true }) => apiFetch(`/api/auctions/${id}/close`, jsonOptions('POST', body)),
   deleteAuction: (id) => apiFetch(`/api/auctions/${id}`, { method: 'DELETE' }),
@@ -159,9 +160,17 @@ export const api = {
   escrow: (id) => apiFetch(`/api/escrows/${id}`),
   updateEscrow: (id, action, body) => apiFetch(`/api/escrows/${id}/${action}`, jsonOptions('PATCH', body)),
 
+  walletSummary: () => apiFetch('/api/wallet'),
+  walletTransactions: (params = {}) => apiFetch(`/api/wallet/transactions?${toQueryString({ limit: 50, ...params })}`),
+  topUpWallet: (body) => apiFetch('/api/wallet/top-up', jsonOptions('POST', body)),
+  adminWalletUsers: (params = {}) => apiFetch(`/api/wallet/admin/users?${toQueryString({ limit: 50, ...params })}`),
+  adminWalletTransactions: (params = {}) => apiFetch(`/api/wallet/admin/transactions?${toQueryString({ limit: 50, ...params })}`),
+  adminTopUpWallet: (body) => apiFetch('/api/wallet/admin/top-up', jsonOptions('POST', body)),
+
   reviews: (params = {}) => apiFetch(`/api/reviews?${toQueryString({ limit: 50, ...params })}`),
   review: (id) => apiFetch(`/api/reviews/${id}`),
   createReview: (body) => apiFetch('/api/reviews', jsonOptions('POST', body)),
   respondReview: (id, body) => apiFetch(`/api/reviews/${id}/respond`, jsonOptions('PATCH', body)),
   updateReviewVisibility: (id, body) => apiFetch(`/api/reviews/${id}/visibility`, jsonOptions('PATCH', body)),
 };
+

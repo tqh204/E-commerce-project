@@ -22,6 +22,11 @@ const bidSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    reservedAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     maxAutoBid: {
       type: Number,
       default: null,

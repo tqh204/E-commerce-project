@@ -29,6 +29,18 @@ const getDisplayPrice = (product = {}) =>
     ? Number(product.currentBid || product.startingBid || product.price || 0)
     : Number(product.price || 0);
 
+const fallbackArtwork = (seed = '') => {
+  const palettes = [
+    'linear-gradient(135deg, rgba(15,118,110,0.18), rgba(255,247,237,0.92))',
+    'linear-gradient(135deg, rgba(249,115,22,0.16), rgba(239,246,255,0.92))',
+    'linear-gradient(135deg, rgba(59,130,246,0.16), rgba(255,248,229,0.92))',
+    'linear-gradient(135deg, rgba(34,197,94,0.16), rgba(255,255,255,0.92))',
+  ];
+  let total = 0;
+  for (const char of String(seed || '')) total += char.charCodeAt(0);
+  return palettes[total % palettes.length];
+};
+
 const getSortLabel = (sort = '') => {
   if (sort === 'price_asc') return 'Giá tăng dần';
   if (sort === 'price_desc') return 'Giá giảm dần';
@@ -76,6 +88,8 @@ const CatalogView = ({
   isCatalogLoading,
   showFilters = true,
   showCatalog = true,
+  showHero = true,
+  showShowcase = true,
 }) => {
   const browserMode = showFilters && showCatalog;
   const categoryOptions = [...categories].sort((left, right) =>
@@ -113,13 +127,13 @@ const CatalogView = ({
 
   return (
     <div className="view-grid">
-      {showFilters ? (
+      {showFilters && showHero ? (
         <section className="market-hero section-card wide">
           <div className="market-hero__copy">
-            <p className="eyebrow">ChoMarket x Chotot x Mercari</p>
-            <h2>San pham cu, auction va giao dich truc tiep tren cung mot marketplace.</h2>
+            <p className="eyebrow">ChoMarket x Chợ Tốt x Mercari</p>
+            <h2>Sản phẩm cũ, auction và giao dịch trực tiếp trên cùng một marketplace.</h2>
             <p className="muted">
-              Xem listing moi, loc theo danh muc va gia, mo chat voi nguoi ban, hoac dat mua ngay neu san pham phu hop.
+              Xem listing mới, lọc theo danh mục và giá, mở chat với người bán, hoặc đặt mua ngay nếu sản phẩm phù hợp.
             </p>
             <div className="market-stats">
               <div className="market-stat">
@@ -128,19 +142,19 @@ const CatalogView = ({
               </div>
               <div className="market-stat">
                 <strong>{categories.length}</strong>
-                <span>Danh muc</span>
+                <span>Danh mục</span>
               </div>
               <div className="market-stat">
                 <strong>{products.filter((item) => item.saleType === 'auction').length}</strong>
-                <span>Dau gia</span>
+                <span>Đấu giá</span>
               </div>
             </div>
           </div>
           <div className="market-hero__panel">
             <div className="hero-note">
-              <span className="hero-note__pill">Loc nhanh</span>
-              <strong>Chon nhanh nhom san pham dang co san</strong>
-              <p className="muted">Danh muc hien thi tu du lieu san co, bam vao la loc ngay.</p>
+              <span className="hero-note__pill">Lọc nhanh</span>
+              <strong>Chọn nhanh nhóm sản phẩm đang có sẵn</strong>
+              <p className="muted">Danh mục hiển thị từ dữ liệu sẵn có, bấm vào là lọc ngay.</p>
             </div>
             <div className="chip-grid">
               <button
@@ -148,7 +162,7 @@ const CatalogView = ({
                 className={`category-chip${!filters.categoryId ? ' active' : ''}`}
                 onClick={() => applyCategory('')}
               >
-                Tat ca danh muc
+                Tất cả danh mục
               </button>
               {categoryOptions.slice(0, 8).map((category) => (
                 <button
@@ -166,18 +180,18 @@ const CatalogView = ({
       ) : null}
 
       {showFilters && !browserMode ? (
-        <SectionCard title="Tim san pham" subtitle="Marketplace filters" className="wide">
+        <SectionCard title="Tìm sản phẩm" subtitle="Bộ lọc marketplace" className="wide">
           <div className="form-grid form-grid--four market-filter-grid">
             <input
               value={filters.q}
               onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))}
-              placeholder="Tu khoa"
+              placeholder="Từ khóa"
             />
             <select
               value={filters.categoryId}
               onChange={(event) => setFilters((current) => ({ ...current, categoryId: event.target.value }))}
             >
-              <option value="">Tat ca danh muc</option>
+              <option value="">Tất cả danh mục</option>
               {categoryOptions.map((category) => (
                 <option key={category._id} value={category._id}>
                   {category.name}
@@ -188,35 +202,35 @@ const CatalogView = ({
               value={filters.saleType}
               onChange={(event) => setFilters((current) => ({ ...current, saleType: event.target.value }))}
             >
-              <option value="">Tat ca hinh thuc</option>
+              <option value="">Tất cả hình thức</option>
               <option value="fixed_price">Mua ngay</option>
-              <option value="auction">Dau gia</option>
+              <option value="auction">Đấu giá</option>
             </select>
             <select value={filters.sort} onChange={handleSortChange}>
-              <option value="">Moi nhat</option>
-              <option value="price_asc">Gia tang dan</option>
-              <option value="price_desc">Gia giam dan</option>
+              <option value="">Mới nhất</option>
+              <option value="price_asc">Giá tăng dần</option>
+              <option value="price_desc">Giá giảm dần</option>
             </select>
             <input
               type="number"
               value={filters.minPrice}
               onChange={(event) => setFilters((current) => ({ ...current, minPrice: event.target.value }))}
-              placeholder="Gia tu"
+              placeholder="Giá từ"
             />
             <input
               type="number"
               value={filters.maxPrice}
               onChange={(event) => setFilters((current) => ({ ...current, maxPrice: event.target.value }))}
-              placeholder="Gia den"
+              placeholder="Giá đến"
             />
             <button type="button" className="primary-btn" onClick={() => onApplyFilters()}>
-              Ap dung bo loc
+              Áp dụng bộ lọc
             </button>
           </div>
         </SectionCard>
       ) : null}
 
-      {showCatalog ? (
+      {showCatalog && showShowcase ? (
         <section className="market-showcase section-card wide">
           <div className="category-ribbon">
             <button
@@ -224,7 +238,7 @@ const CatalogView = ({
               className={`category-ribbon__item${!filters.categoryId ? ' active' : ''}`}
               onClick={() => applyCategory('')}
             >
-              Tat ca
+              T?t c?
             </button>
             {categoryOptions.slice(0, 10).map((category) => (
               <button
@@ -240,7 +254,7 @@ const CatalogView = ({
           <div className="market-showcase__grid">
             <div className="showcase-column">
               <div className="showcase-column__head">
-                <strong>Tin moi len</strong>
+                <strong>Tin mới lên</strong>
                 <span className="muted">Cap nhat gan day</span>
               </div>
               {freshProducts.map((product) => (
@@ -253,7 +267,7 @@ const CatalogView = ({
             <div className="showcase-column">
               <div className="showcase-column__head">
                 <strong>Auction noi bat</strong>
-                <span className="muted">Dang nhan gia</span>
+                <span className="muted">Đang nhận giá</span>
               </div>
               {(auctionHighlights.length ? auctionHighlights : freshProducts).map((product) => (
                 <button key={`auction-${product._id}`} type="button" className="showcase-item" onClick={() => onSelectProduct(product._id)}>
@@ -264,7 +278,7 @@ const CatalogView = ({
             </div>
             <div className="showcase-column">
               <div className="showcase-column__head">
-                <strong>Gia de chot</strong>
+                <strong>Giá dễ chốt</strong>
                 <span className="muted">Sap xep gia thap den cao</span>
               </div>
               {(budgetHighlights.length ? budgetHighlights : freshProducts).map((product) => (
@@ -282,18 +296,18 @@ const CatalogView = ({
         <section className="catalog-browser section-card wide">
           <aside className="catalog-browser__sidebar">
             <div className="catalog-sidebar-card">
-              <p className="eyebrow">Bo loc nhanh</p>
+              <p className="eyebrow">Bộ lọc nhanh</p>
               <div className="form-grid">
                 <input
                   value={filters.q}
                   onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))}
-                  placeholder="Tu khoa"
+                  placeholder="Từ khóa"
                 />
                 <select
                   value={filters.categoryId}
                   onChange={(event) => setFilters((current) => ({ ...current, categoryId: event.target.value }))}
                 >
-                  <option value="">Tat ca danh muc</option>
+                  <option value="">Tất cả danh mục</option>
                   {categoryOptions.map((category) => (
                     <option key={category._id} value={category._id}>
                       {category.name}
@@ -304,44 +318,44 @@ const CatalogView = ({
                   value={filters.saleType}
                   onChange={(event) => setFilters((current) => ({ ...current, saleType: event.target.value }))}
                 >
-                  <option value="">Tat ca hinh thuc</option>
+                  <option value="">Tất cả hình thức</option>
                   <option value="fixed_price">Mua ngay</option>
-                  <option value="auction">Dau gia</option>
+                  <option value="auction">Đấu giá</option>
                 </select>
                 <div className="catalog-price-grid">
                   <input
                     type="number"
                     value={filters.minPrice}
                     onChange={(event) => setFilters((current) => ({ ...current, minPrice: event.target.value }))}
-                    placeholder="Gia tu"
+                    placeholder="Giá từ"
                   />
                   <input
                     type="number"
                     value={filters.maxPrice}
                     onChange={(event) => setFilters((current) => ({ ...current, maxPrice: event.target.value }))}
-                    placeholder="Gia den"
+                    placeholder="Giá đến"
                   />
                 </div>
                 <select value={filters.sort} onChange={handleSortChange}>
-                  <option value="">Moi nhat</option>
-                  <option value="price_asc">Gia tang dan</option>
-                  <option value="price_desc">Gia giam dan</option>
+                  <option value="">Mới nhất</option>
+                  <option value="price_asc">Giá tăng dần</option>
+                  <option value="price_desc">Giá giảm dần</option>
                 </select>
                 <button type="button" className="primary-btn" onClick={() => onApplyFilters()}>
-                  Ap dung bo loc
+                  Áp dụng bộ lọc
                 </button>
               </div>
             </div>
 
             <div className="catalog-sidebar-card">
-              <p className="eyebrow">Danh muc co san</p>
+              <p className="eyebrow">Danh mục có sẵn</p>
               <div className="catalog-category-list">
                 <button
                   type="button"
                   className={`catalog-category-item${!filters.categoryId ? ' active' : ''}`}
                   onClick={() => applyCategory('')}
                 >
-                  Tat ca danh muc
+                  Tất cả danh mục
                 </button>
                 {categoryOptions.map((category) => (
                   <button
@@ -357,11 +371,11 @@ const CatalogView = ({
             </div>
 
             <div className="catalog-sidebar-card">
-              <p className="eyebrow">Kinh nghiem</p>
+              <p className="eyebrow">Kinh nghiệm</p>
               <ul className="sidebar-tips">
-                <li>Nhap tu khoa ngan gon roi ket hop gia de ra ket qua sat nhu cau hon.</li>
-                <li>Neu muon so sanh nhanh, doi sap xep gia tang dan hoac giam dan.</li>
-                <li>Voi auction, hay kiem tra gia hien tai va thoi gian ket thuc truoc khi dat gia.</li>
+                <li>Nhập từ khóa ngắn gọn rồi kết hợp giá để ra kết quả sát nhu cầu hơn.</li>
+                <li>Nếu muốn so sánh nhanh, đổi sắp xếp giá tăng dần hoặc giảm dần.</li>
+                <li>Với auction, hãy kiểm tra giá hiện tại và thời gian kết thúc trước khi đặt giá.</li>
               </ul>
             </div>
           </aside>
@@ -390,7 +404,13 @@ const CatalogView = ({
                 {visibleProducts.map((product) => (
                   <button key={product._id} className="resource-card listing-card" onClick={() => onSelectProduct(product._id)}>
                     <div className="resource-card__image listing-card__image">
-                      {product.thumbnailImage ? <img src={product.thumbnailImage} alt={product.title} /> : <span>No image</span>}
+                      {product.thumbnailImage ? (
+                        <img src={product.thumbnailImage} alt={product.title} />
+                      ) : (
+                        <span className="listing-card__placeholder" style={{ background: fallbackArtwork(product.title) }}>
+                          <span>{product.category?.name || 'Listing'}</span>
+                        </span>
+                      )}
                     </div>
                     <div className="listing-card__body">
                       <div className="tag-row listing-card__tags">
@@ -401,7 +421,7 @@ const CatalogView = ({
                       <span className="price">{formatPrice(getDisplayPrice(product))} VND</span>
                       <span className="muted">{joinLocation(product.ward, product.district, product.province)}</span>
                       <div className="listing-card__footer">
-                        <span>{product.seller?.fullName || product.seller?.username || 'Nguoi ban'}</span>
+                        <span>{product.seller?.fullName || product.seller?.username || 'Người bán'}</span>
                         <span>{product.viewsCount || 0} lượt xem</span>
                       </div>
                     </div>
@@ -450,7 +470,13 @@ const CatalogView = ({
               {visibleProducts.map((product) => (
                 <button key={product._id} className="resource-card listing-card" onClick={() => onSelectProduct(product._id)}>
                   <div className="resource-card__image listing-card__image">
-                    {product.thumbnailImage ? <img src={product.thumbnailImage} alt={product.title} /> : <span>No image</span>}
+                    {product.thumbnailImage ? (
+                      <img src={product.thumbnailImage} alt={product.title} />
+                    ) : (
+                      <span className="listing-card__placeholder" style={{ background: fallbackArtwork(product.title) }}>
+                        <span>{product.category?.name || 'Listing'}</span>
+                      </span>
+                    )}
                   </div>
                   <div className="listing-card__body">
                     <div className="tag-row listing-card__tags">
@@ -461,7 +487,7 @@ const CatalogView = ({
                     <span className="price">{formatPrice(getDisplayPrice(product))} VND</span>
                     <span className="muted">{joinLocation(product.ward, product.district, product.province)}</span>
                     <div className="listing-card__footer">
-                      <span>{product.seller?.fullName || product.seller?.username || 'Nguoi ban'}</span>
+                      <span>{product.seller?.fullName || product.seller?.username || 'Người bán'}</span>
                       <span>{product.viewsCount || 0} lượt xem</span>
                     </div>
                   </div>
@@ -520,6 +546,20 @@ const CatalogView = ({
                   <small>{CONDITION_LABELS[selectedProduct.condition] || selectedProduct.condition}</small>
                 </div>
                 <div className="price price--big">{formatPrice(getDisplayPrice(selectedProduct))} VND</div>
+                <div className="product-highlight-row">
+                  <div className="product-highlight-card">
+                    <span>Hình thức</span>
+                    <strong>{SALE_TYPE_LABELS[selectedProduct.saleType] || selectedProduct.saleType}</strong>
+                  </div>
+                  <div className="product-highlight-card">
+                    <span>Nguồn đăng</span>
+                    <strong>{selectedProduct.source || 'manual'}</strong>
+                  </div>
+                  <div className="product-highlight-card">
+                    <span>Giao dịch</span>
+                    <strong>{selectedProduct.fulfillmentType || 'shipping'}</strong>
+                  </div>
+                </div>
                 <p>{selectedProduct.description}</p>
                 <div className="meta-grid product-meta-grid">
                   <span>Người bán: {selectedProduct.seller?.fullName || selectedProduct.seller?.username || 'Chưa có'}</span>
@@ -610,7 +650,13 @@ const CatalogView = ({
               {relatedProducts.map((product) => (
                 <button key={`related-${product._id}`} className="resource-card listing-card listing-card--compact" onClick={() => onSelectProduct(product._id)}>
                   <div className="resource-card__image listing-card__image">
-                    {product.thumbnailImage ? <img src={product.thumbnailImage} alt={product.title} /> : <span>No image</span>}
+                    {product.thumbnailImage ? (
+                      <img src={product.thumbnailImage} alt={product.title} />
+                    ) : (
+                      <span className="listing-card__placeholder" style={{ background: fallbackArtwork(product.title) }}>
+                        <span>{product.category?.name || 'Listing'}</span>
+                      </span>
+                    )}
                   </div>
                   <div className="listing-card__body">
                     <strong className="listing-card__title">{product.title}</strong>

@@ -23,60 +23,198 @@
       "ApiEnvelope": {
         "type": "object",
         "properties": {
-          "success": { "type": "boolean" },
-          "message": { "type": "string" },
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
           "data": {},
-          "meta": { "type": "object" }
+          "meta": {
+            "type": "object"
+          }
         }
       },
       "LoginRequest": {
         "type": "object",
-        "required": ["identifier", "password"],
+        "required": [
+          "identifier",
+          "password"
+        ],
         "properties": {
-          "identifier": { "type": "string", "example": "admin@example.com" },
-          "password": { "type": "string", "example": "password123" }
+          "identifier": {
+            "type": "string",
+            "example": "admin@example.com"
+          },
+          "password": {
+            "type": "string",
+            "example": "password123"
+          }
         }
       },
       "ProductCreateRequest": {
         "type": "object",
-        "required": ["categoryId", "title", "description", "price"],
+        "required": [
+          "categoryId",
+          "title",
+          "description",
+          "price"
+        ],
         "properties": {
-          "categoryId": { "type": "string" },
-          "title": { "type": "string" },
-          "description": { "type": "string" },
-          "price": { "type": "number" },
-          "saleType": { "type": "string", "enum": ["fixed_price", "auction"] },
-          "condition": { "type": "string", "enum": ["new", "like_new", "good", "fair", "for_parts", "unknown"] },
-          "addressText": { "type": "string" },
-          "province": { "type": "string" },
-          "district": { "type": "string" },
-          "ward": { "type": "string" },
+          "categoryId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number"
+          },
+          "saleType": {
+            "type": "string",
+            "enum": [
+              "fixed_price",
+              "auction"
+            ]
+          },
+          "condition": {
+            "type": "string",
+            "enum": [
+              "new",
+              "like_new",
+              "good",
+              "fair",
+              "for_parts",
+              "unknown"
+            ]
+          },
+          "addressText": {
+            "type": "string"
+          },
+          "province": {
+            "type": "string"
+          },
+          "district": {
+            "type": "string"
+          },
+          "ward": {
+            "type": "string"
+          },
           "tags": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
       "ConversationMessageRequest": {
         "type": "object",
         "properties": {
-          "content": { "type": "string" },
-          "messageType": { "type": "string", "enum": ["text", "image"] },
-          "replyTo": { "type": "string", "nullable": true }
+          "content": {
+            "type": "string"
+          },
+          "messageType": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image"
+            ]
+          },
+          "replyTo": {
+            "type": "string",
+            "nullable": true
+          }
         }
       },
       "AuctionBidRequest": {
         "type": "object",
-        "required": ["amount"],
+        "required": [
+          "amount"
+        ],
         "properties": {
-          "amount": { "type": "number", "example": 15000000 }
+          "amount": {
+            "type": "number",
+            "example": 15000000
+          }
         }
       },
       "EscrowActionRequest": {
         "type": "object",
         "properties": {
-          "reason": { "type": "string", "example": "Released after delivery confirmed" },
-          "notes": { "type": "string", "example": "Handled from dashboard" }
+          "reason": {
+            "type": "string",
+            "example": "Released after delivery confirmed"
+          },
+          "notes": {
+            "type": "string",
+            "example": "Handled from dashboard"
+          }
+        }
+      },
+      "AuctionCreateRequest": {
+        "type": "object",
+        "required": [
+          "productId",
+          "startAt",
+          "endAt",
+          "startingBid"
+        ],
+        "properties": {
+          "productId": {
+            "type": "string"
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startingBid": {
+            "type": "number",
+            "example": 1000000
+          },
+          "reservePrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "buyNowPrice": {
+            "type": "number",
+            "nullable": true
+          },
+          "bidStep": {
+            "type": "number",
+            "description": "Optional. Must be at least max(20000, 20% of startingBid)."
+          },
+          "autoExtendMinutes": {
+            "type": "number",
+            "nullable": true
+          }
+        }
+      },
+      "AuctionModerationRequest": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "example": "approve"
+          },
+          "note": {
+            "type": "string",
+            "example": "Approved by admin after moderation review"
+          }
         }
       }
     }
@@ -84,7 +222,9 @@
   "paths": {
     "/api/auth/register": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Register a new user",
         "requestBody": {
           "required": true,
@@ -92,417 +232,1123 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["username", "email", "password", "fullName"],
+                "required": [
+                  "username",
+                  "email",
+                  "password",
+                  "fullName"
+                ],
                 "properties": {
-                  "username": { "type": "string" },
-                  "email": { "type": "string" },
-                  "password": { "type": "string" },
-                  "fullName": { "type": "string" },
-                  "phone": { "type": "string" }
+                  "username": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "fullName": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Registered" }
+          "201": {
+            "description": "Registered"
+          }
         }
       }
     },
     "/api/auth/login": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Login with email or username",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
             }
           }
         },
         "responses": {
-          "200": { "description": "Logged in" }
+          "200": {
+            "description": "Logged in"
+          }
         }
       }
     },
     "/api/auth/me": {
       "get": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Current session",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
-          "200": { "description": "Authenticated user" }
+          "200": {
+            "description": "Authenticated user"
+          }
         }
       }
     },
     "/api/categories": {
       "get": {
-        "tags": ["Categories"],
+        "tags": [
+          "Categories"
+        ],
         "summary": "List categories",
-        "responses": { "200": { "description": "Category list" } }
+        "responses": {
+          "200": {
+            "description": "Category list"
+          }
+        }
       },
       "post": {
-        "tags": ["Categories"],
+        "tags": [
+          "Categories"
+        ],
         "summary": "Create category",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "201": { "description": "Category created" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Category created"
+          }
+        }
       }
     },
     "/api/products": {
       "get": {
-        "tags": ["Products"],
+        "tags": [
+          "Products"
+        ],
         "summary": "List products with filters",
         "parameters": [
-          { "name": "q", "in": "query", "schema": { "type": "string" } },
-          { "name": "categoryId", "in": "query", "schema": { "type": "string" } },
-          { "name": "saleType", "in": "query", "schema": { "type": "string" } },
-          { "name": "source", "in": "query", "schema": { "type": "string" } },
-          { "name": "status", "in": "query", "schema": { "type": "string" } },
-          { "name": "minPrice", "in": "query", "schema": { "type": "number" } },
-          { "name": "maxPrice", "in": "query", "schema": { "type": "number" } },
-          { "name": "lat", "in": "query", "schema": { "type": "number" } },
-          { "name": "lng", "in": "query", "schema": { "type": "number" } },
-          { "name": "radius", "in": "query", "schema": { "type": "number" } }
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "saleType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minPrice",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "maxPrice",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "lat",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "lng",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "radius",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
         ],
-        "responses": { "200": { "description": "Product list" } }
+        "responses": {
+          "200": {
+            "description": "Product list"
+          }
+        }
       },
       "post": {
-        "tags": ["Products"],
+        "tags": [
+          "Products"
+        ],
         "summary": "Create product",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ProductCreateRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/ProductCreateRequest"
+              }
             }
           }
         },
-        "responses": { "201": { "description": "Product created" } }
+        "responses": {
+          "201": {
+            "description": "Product created"
+          }
+        }
       }
     },
     "/api/products/{id}": {
       "get": {
-        "tags": ["Products"],
+        "tags": [
+          "Products"
+        ],
         "summary": "Get product detail",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Product detail" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product detail"
+          }
+        }
       },
       "put": {
-        "tags": ["Products"],
+        "tags": [
+          "Products"
+        ],
         "summary": "Update product",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Product updated" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product updated"
+          }
+        }
       },
       "delete": {
-        "tags": ["Products"],
+        "tags": [
+          "Products"
+        ],
         "summary": "Delete product",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Product deleted" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product deleted"
+          }
+        }
       }
     },
     "/api/uploads/multipart": {
       "post": {
-        "tags": ["Uploads"],
+        "tags": [
+          "Uploads"
+        ],
         "summary": "Upload one media file with multer",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "type": "object",
-                "required": ["ownerType", "ownerId", "file"],
+                "required": [
+                  "ownerType",
+                  "ownerId",
+                  "file"
+                ],
                 "properties": {
-                  "ownerType": { "type": "string" },
-                  "ownerId": { "type": "string" },
-                  "isPrimary": { "type": "string" },
-                  "file": { "type": "string", "format": "binary" }
+                  "ownerType": {
+                    "type": "string"
+                  },
+                  "ownerId": {
+                    "type": "string"
+                  },
+                  "isPrimary": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
                 }
               }
             }
           }
         },
-        "responses": { "201": { "description": "Upload created" } }
+        "responses": {
+          "201": {
+            "description": "Upload created"
+          }
+        }
       }
     },
     "/api/uploads/multipart-many": {
       "post": {
-        "tags": ["Uploads"],
+        "tags": [
+          "Uploads"
+        ],
         "summary": "Upload multiple media files",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "201": { "description": "Uploads created" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Uploads created"
+          }
+        }
       }
     },
     "/api/auctions": {
       "get": {
-        "tags": ["Auctions"],
+        "tags": [
+          "Auctions"
+        ],
         "summary": "List auctions",
-        "responses": { "200": { "description": "Auction list" } }
+        "responses": {
+          "200": {
+            "description": "Auction list"
+          }
+        }
       },
       "post": {
-        "tags": ["Auctions"],
-        "summary": "Create auction",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "201": { "description": "Auction created" } }
+        "tags": [
+          "Auctions"
+        ],
+        "summary": "Create auction request (user creates, admin moderates before live)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Auction created"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuctionCreateRequest"
+              }
+            }
+          }
+        }
       }
     },
     "/api/auctions/{id}": {
       "get": {
-        "tags": ["Auctions"],
+        "tags": [
+          "Auctions"
+        ],
         "summary": "Auction detail",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Auction detail" } }
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Auction detail"
+          }
+        }
       },
       "put": {
-        "tags": ["Auctions"],
+        "tags": [
+          "Auctions"
+        ],
         "summary": "Update auction",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Auction updated" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Auction updated"
+          }
+        }
       }
     },
     "/api/auctions/{id}/bids": {
       "post": {
-        "tags": ["Auctions"],
+        "tags": [
+          "Auctions"
+        ],
         "summary": "Place bid",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/AuctionBidRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/AuctionBidRequest"
+              }
             }
           }
         },
-        "responses": { "201": { "description": "Bid created" } }
+        "responses": {
+          "201": {
+            "description": "Bid created"
+          }
+        }
       }
     },
     "/api/auctions/{id}/close": {
       "post": {
-        "tags": ["Auctions"],
+        "tags": [
+          "Auctions"
+        ],
         "summary": "Close or cancel auction",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Auction closed" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Auction closed"
+          }
+        }
       }
     },
     "/api/orders": {
       "get": {
-        "tags": ["Orders"],
+        "tags": [
+          "Orders"
+        ],
         "summary": "List orders",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "Order list" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order list"
+          }
+        }
       },
       "post": {
-        "tags": ["Orders"],
+        "tags": [
+          "Orders"
+        ],
         "summary": "Create order",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "201": { "description": "Order created" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Order created"
+          }
+        }
       }
     },
     "/api/conversations": {
       "get": {
-        "tags": ["Conversations"],
+        "tags": [
+          "Conversations"
+        ],
         "summary": "List conversations with unread counts",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "Conversation list" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Conversation list"
+          }
+        }
       },
       "post": {
-        "tags": ["Conversations"],
+        "tags": [
+          "Conversations"
+        ],
         "summary": "Create or reuse conversation",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "201": { "description": "Conversation created" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Conversation created"
+          }
+        }
       }
     },
     "/api/conversations/{id}/messages": {
       "get": {
-        "tags": ["Conversations"],
+        "tags": [
+          "Conversations"
+        ],
         "summary": "Conversation messages",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Message list" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Message list"
+          }
+        }
       },
       "post": {
-        "tags": ["Conversations"],
+        "tags": [
+          "Conversations"
+        ],
         "summary": "Send message",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ConversationMessageRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/ConversationMessageRequest"
+              }
             }
           }
         },
-        "responses": { "201": { "description": "Message sent" } }
+        "responses": {
+          "201": {
+            "description": "Message sent"
+          }
+        }
       }
     },
     "/api/conversations/{id}/messages/{messageId}": {
       "patch": {
-        "tags": ["Conversations"],
+        "tags": [
+          "Conversations"
+        ],
         "summary": "Edit message",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "messageId", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ConversationMessageRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/ConversationMessageRequest"
+              }
             }
           }
         },
-        "responses": { "200": { "description": "Message edited" } }
+        "responses": {
+          "200": {
+            "description": "Message edited"
+          }
+        }
       },
       "delete": {
-        "tags": ["Conversations"],
-        "summary": "Revoke message",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "messageId", "in": "path", "required": true, "schema": { "type": "string" } }
+        "tags": [
+          "Conversations"
         ],
-        "responses": { "200": { "description": "Message deleted" } }
+        "summary": "Revoke message",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Message deleted"
+          }
+        }
       }
     },
     "/api/conversations/{id}/messages/{messageId}/media/{mediaId}": {
       "delete": {
-        "tags": ["Conversations"],
-        "summary": "Delete one attachment from message",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "messageId", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "mediaId", "in": "path", "required": true, "schema": { "type": "string" } }
+        "tags": [
+          "Conversations"
         ],
-        "responses": { "200": { "description": "Attachment removed" } }
+        "summary": "Delete one attachment from message",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mediaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attachment removed"
+          }
+        }
       }
     },
     "/api/conversations/{id}/read": {
       "patch": {
-        "tags": ["Conversations"],
+        "tags": [
+          "Conversations"
+        ],
         "summary": "Mark conversation as read",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Messages marked read" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Messages marked read"
+          }
+        }
       }
     },
     "/api/escrows": {
       "get": {
-        "tags": ["Escrows"],
+        "tags": [
+          "Escrows"
+        ],
         "summary": "List escrow transactions",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "Escrow list" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Escrow list"
+          }
+        }
       }
     },
     "/api/escrows/{id}": {
       "get": {
-        "tags": ["Escrows"],
+        "tags": [
+          "Escrows"
+        ],
         "summary": "Escrow detail",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Escrow detail" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Escrow detail"
+          }
+        }
       }
     },
     "/api/escrows/{id}/hold": {
       "patch": {
-        "tags": ["Escrows"],
+        "tags": [
+          "Escrows"
+        ],
         "summary": "Hold escrow",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/EscrowActionRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/EscrowActionRequest"
+              }
             }
           }
         },
-        "responses": { "200": { "description": "Escrow updated" } }
+        "responses": {
+          "200": {
+            "description": "Escrow updated"
+          }
+        }
       }
     },
     "/api/escrows/{id}/release": {
       "patch": {
-        "tags": ["Escrows"],
+        "tags": [
+          "Escrows"
+        ],
         "summary": "Release escrow",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/EscrowActionRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/EscrowActionRequest"
+              }
             }
           }
         },
-        "responses": { "200": { "description": "Escrow updated" } }
+        "responses": {
+          "200": {
+            "description": "Escrow updated"
+          }
+        }
       }
     },
     "/api/escrows/{id}/refund": {
       "patch": {
-        "tags": ["Escrows"],
+        "tags": [
+          "Escrows"
+        ],
         "summary": "Refund escrow",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/EscrowActionRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/EscrowActionRequest"
+              }
             }
           }
         },
-        "responses": { "200": { "description": "Escrow updated" } }
+        "responses": {
+          "200": {
+            "description": "Escrow updated"
+          }
+        }
       }
     },
     "/api/escrows/{id}/dispute": {
       "patch": {
-        "tags": ["Escrows"],
+        "tags": [
+          "Escrows"
+        ],
         "summary": "Open escrow dispute",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/EscrowActionRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/EscrowActionRequest"
+              }
             }
           }
         },
-        "responses": { "200": { "description": "Escrow updated" } }
+        "responses": {
+          "200": {
+            "description": "Escrow updated"
+          }
+        }
       }
     },
     "/api/reviews": {
       "get": {
-        "tags": ["Reviews"],
+        "tags": [
+          "Reviews"
+        ],
         "summary": "List reviews",
-        "responses": { "200": { "description": "Review list" } }
+        "responses": {
+          "200": {
+            "description": "Review list"
+          }
+        }
       },
       "post": {
-        "tags": ["Reviews"],
+        "tags": [
+          "Reviews"
+        ],
         "summary": "Create review",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "201": { "description": "Review created" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Review created"
+          }
+        }
       }
     },
     "/api/imports/chotot": {
       "post": {
-        "tags": ["Imports"],
+        "tags": [
+          "Imports"
+        ],
         "summary": "Import data from Chotot",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "Import completed" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Import completed"
+          }
+        }
       }
     },
     "/api/imports/batches": {
       "get": {
-        "tags": ["Imports"],
+        "tags": [
+          "Imports"
+        ],
         "summary": "List import batches",
-        "security": [{ "bearerAuth": [] }],
-        "responses": { "200": { "description": "Batch list" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Batch list"
+          }
+        }
+      }
+    },
+    "/api/auctions/{id}/moderate": {
+      "post": {
+        "tags": [
+          "Auctions"
+        ],
+        "summary": "Approve or reject auction as admin",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuctionModerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Auction moderation updated"
+          }
+        }
+      }
+    },
+    "/api/auctions/{id}/open": {
+      "post": {
+        "tags": [
+          "Auctions"
+        ],
+        "summary": "Open approved auction as admin",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Auction opened"
+          }
+        }
       }
     }
   }
