@@ -163,6 +163,7 @@ export const api = {
   walletSummary: () => apiFetch('/api/wallet'),
   walletTransactions: (params = {}) => apiFetch(`/api/wallet/transactions?${toQueryString({ limit: 50, ...params })}`),
   topUpWallet: (body) => apiFetch('/api/wallet/top-up', jsonOptions('POST', body)),
+  momoTopUpWallet: (body) => apiFetch('/api/wallet/momo/top-up', jsonOptions('POST', body)),
   adminWalletUsers: (params = {}) => apiFetch(`/api/wallet/admin/users?${toQueryString({ limit: 50, ...params })}`),
   adminWalletTransactions: (params = {}) => apiFetch(`/api/wallet/admin/transactions?${toQueryString({ limit: 50, ...params })}`),
   adminTopUpWallet: (body) => apiFetch('/api/wallet/admin/top-up', jsonOptions('POST', body)),

@@ -994,19 +994,20 @@ const App = () => {
     async (event) => {
       event.preventDefault();
       const amount = Number(walletTopUpForm.amount || 0);
-      if (amount <= 0) {
-        setNotice('Vui lòng nhập số tiền nạp hợp lệ.');
+      if (amount < 10000) {
+        setNotice('Vui lòng nhập số tiền nạp từ 10.000 VND trở lên.');
         return;
       }
-      await api.topUpWallet({ amount, source: 'frontend_account' });
-      const profilePayload = await api.me();
-      setUser(profilePayload.data || null);
-      setProfileForm(mapProfileToForm(profilePayload.data));
-      await loadPrivate();
+      const momoPayload = await api.momoTopUpWallet({ amount });
+      const payUrl = momoPayload?.data?.payUrl;
+      if (!payUrl) {
+        setNotice('Không lấy được liên kết thanh toán MoMo. Vui lòng thử lại.');
+        return;
+      }
       setWalletTopUpForm({ amount: '500000' });
-      setNotice('Đã nạp tiền vào ví thành công.');
+      window.location.href = payUrl;
     },
-    [loadPrivate, walletTopUpForm]
+    [walletTopUpForm]
   );
 
   const handleAdminTopUpWallet = useCallback(

@@ -1,6 +1,7 @@
 ﻿const { User, WalletTransaction } = require('../schemas');
 const { asyncHandler, buildPaginationMeta, parsePagination, sendSuccess } = require('../lib/http');
 const { getAvailableBalance, topUpWallet } = require('../lib/wallet');
+const { createWalletTopUp, handleMomoCallback } = require('../lib/momo');
 const { isAdmin } = require('../middleware/auth');
 
 const requireAdmin = (req) => {
@@ -54,6 +55,94 @@ exports.topUpWallet = asyncHandler(async (req, res) => {
     balance: Number(user.balance || 0),
     lockedBalance: Number(user.lockedBalance || 0),
     availableBalance: getAvailableBalance(user),
+  });
+});
+
+exports.createMomoTopUp = asyncHandler(async (req, res) => {
+  const amount = Number(req.body.amount || 0);
+  if (!Number.isFinite(amount) || amount < 10000) {
+    const error = new Error('Minimum top up amount is 10,000 VND');
+    error.status = 400;
+    throw error;
+  }
+
+  const result = await createWalletTopUp({
+    userId: req.user._id,
+    amount,
+  });
+
+  return sendSuccess(res, {
+    payUrl: result.payUrl,
+    deeplink: result.deeplink,
+    orderId: result.orderId,
+    requestId: result.requestId,
+    momoResponse: result.response,
+  });
+});
+
+const extractCallbackPayload = (req) => {
+  if (req.method === 'GET') {
+    return req.query || {};
+  }
+  return req.body || {};
+};
+
+const creditMomoTopUpIfNeeded = async (payment) => {
+  if (!payment || payment.status !== 'success') {
+    return null;
+  }
+
+  const existing = await WalletTransaction.findOne({
+    'metadata.momoOrderId': payment.orderId,
+    type: 'top_up',
+  }).lean();
+  if (existing) {
+    return null;
+  }
+
+  const user = await topUpWallet({
+    userId: payment.user,
+    amount: payment.amount,
+    description: `MoMo wallet top up (${payment.orderId})`,
+    metadata: {
+      source: 'momo',
+      momoOrderId: payment.orderId,
+      momoTransId: payment.transId || '',
+      momoRequestId: payment.requestId,
+    },
+  });
+
+  return user;
+};
+
+exports.momoReturn = asyncHandler(async (req, res) => {
+  const payload = extractCallbackPayload(req);
+  const { payment, status } = await handleMomoCallback({ payload, source: 'return' });
+  await creditMomoTopUpIfNeeded(payment);
+
+  const redirectBase = process.env.MOMO_RETURN_REDIRECT_URL || '';
+  if (redirectBase) {
+    const url = new URL(redirectBase);
+    url.searchParams.set('status', status);
+    url.searchParams.set('orderId', payment.orderId);
+    return res.redirect(url.toString());
+  }
+
+  return sendSuccess(res, {
+    status,
+    orderId: payment.orderId,
+    resultCode: payment.resultCode,
+  });
+});
+
+exports.momoIpn = asyncHandler(async (req, res) => {
+  const payload = extractCallbackPayload(req);
+  const { payment, status } = await handleMomoCallback({ payload, source: 'ipn' });
+  await creditMomoTopUpIfNeeded(payment);
+
+  return res.json({
+    resultCode: 0,
+    message: status === 'success' ? 'Success' : 'Processed',
   });
 });
 
