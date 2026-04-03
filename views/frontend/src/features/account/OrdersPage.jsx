@@ -1,6 +1,6 @@
 ﻿import AppLink from '../../shared/AppLink';
 import SectionCard from '../../shared/SectionCard';
-import { formatDateTime, formatPrice, joinLocation } from '@frontend-utils/format';
+import { compactText, formatDateTime, formatPrice, joinLocation } from '@frontend-utils/format';
 
 const ORDER_STATUS_LABELS = {
   negotiating: 'Chờ thương lượng',
@@ -44,6 +44,11 @@ const OrdersPage = ({
   onUpdateOrderStatus,
   onDeleteOrder,
   onAttachShippingAddress,
+  reviews = [],
+  reviewForm,
+  setReviewForm,
+  onCreateReview,
+  onRespondReview,
 }) => (
   <div className="view-grid">
     <SectionCard
@@ -182,6 +187,76 @@ const OrdersPage = ({
             <p className="muted">
               Khi bạn mua sản phẩm hoặc có người muốn mua sản phẩm của bạn, đơn hàng sẽ xuất hiện tại đây.
             </p>
+          </div>
+        ) : null}
+      </div>
+    </SectionCard>
+
+    <SectionCard title="Đánh giá" subtitle="Tạo và phản hồi đánh giá" className="wide">
+      <form className="stack gap-sm" onSubmit={onCreateReview}>
+        <div className="form-grid form-grid--three">
+          <input
+            value={reviewForm.orderId}
+            onChange={(event) =>
+              setReviewForm((current) => ({ ...current, orderId: event.target.value }))
+            }
+            placeholder="Mã đơn hàng"
+            required
+          />
+          <input
+            type="number"
+            min="1"
+            max="5"
+            value={reviewForm.score}
+            onChange={(event) =>
+              setReviewForm((current) => ({ ...current, score: event.target.value }))
+            }
+            placeholder="Điểm"
+            required
+          />
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={reviewForm.isVisible}
+              onChange={(event) =>
+                setReviewForm((current) => ({ ...current, isVisible: event.target.checked }))
+              }
+            />
+            Hiển thị
+          </label>
+        </div>
+        <textarea
+          value={reviewForm.comment}
+          onChange={(event) =>
+            setReviewForm((current) => ({ ...current, comment: event.target.value }))
+          }
+          placeholder="Nội dung đánh giá"
+          rows={3}
+        />
+        <button type="submit">Tạo đánh giá</button>
+      </form>
+
+      <div className="resource-list">
+        {reviews.map((review) => (
+          <article key={review._id} className="resource-item">
+            <div>
+              <strong>{review.product?.title || review._id}</strong>
+              <p>{review.score}/5 | {compactText(review.comment || 'Không có nội dung', 90)}</p>
+            </div>
+            <div className="resource-item__meta">
+              <small>{review.isVisible ? 'Đang hiển thị' : 'Đã ẩn'}</small>
+              <small>{formatDateTime(review.createdAt)}</small>
+              <button type="button" onClick={() => onRespondReview(review._id)}>
+                Phản hồi
+              </button>
+            </div>
+          </article>
+        ))}
+
+        {!reviews.length ? (
+          <div className="empty-state compact-empty">
+            <strong>Chưa có đánh giá nào.</strong>
+            <p className="muted">Bạn có thể tạo đánh giá sau khi có đơn hàng phù hợp.</p>
           </div>
         ) : null}
       </div>
