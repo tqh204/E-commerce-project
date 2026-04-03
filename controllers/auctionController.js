@@ -1,4 +1,5 @@
 ﻿const { Auction, Bid, Product, User } = require('../schemas');
+const { createNotification } = require('../lib/notifications');
 const {
   closeAuction,
   createAuctionSettlementOrder,
@@ -302,6 +303,16 @@ exports.placeBid = asyncHandler(async (req, res) => {
       bid: currentWinningBid._id,
       description: 'Outbid reserve unlocked',
     });
+
+    await createNotification({
+      userId: currentWinningBid.bidder,
+      title: 'Bạn đã bị vượt giá',
+      message: 'Có người vừa trả giá cao hơn trong phiên đấu giá bạn tham gia.',
+      type: 'auction_outbid',
+      refType: 'auction',
+      refId: String(auction._id),
+      metadata: { auctionId: String(auction._id), bidId: String(currentWinningBid._id) },
+    });
   }
 
   await Bid.updateMany(
@@ -328,6 +339,16 @@ exports.placeBid = asyncHandler(async (req, res) => {
   await auction.save();
 
   await Product.findByIdAndUpdate(auction.product, { currentBid: amount });
+
+  await createNotification({
+    userId: auction.seller,
+    title: 'Có trả giá mới',
+    message: `Phiên đấu giá vừa có người trả giá ${amount.toLocaleString('vi-VN')} VND.`,
+    type: 'auction_bid',
+    refType: 'auction',
+    refId: String(auction._id),
+    metadata: { auctionId: String(auction._id), bidId: String(bid._id) },
+  });
 
   return sendSuccess(res, bid, null, 201);
 });
@@ -408,6 +429,27 @@ exports.buyNow = asyncHandler(async (req, res) => {
   product.currentBid = buyNowPrice;
   product.soldAt = new Date();
   await product.save();
+
+  await Promise.all([
+    createNotification({
+      userId: auction.seller,
+      title: 'Đấu giá kết thúc (mua ngay)',
+      message: `Người mua đã chọn mua ngay với giá ${buyNowPrice.toLocaleString('vi-VN')} VND.`,
+      type: 'auction_buy_now',
+      refType: 'auction',
+      refId: String(auction._id),
+      metadata: { auctionId: String(auction._id), orderId: String(order._id) },
+    }),
+    createNotification({
+      userId: req.user._id,
+      title: 'Mua ngay thành công',
+      message: `Bạn đã mua ngay sản phẩm đấu giá với giá ${buyNowPrice.toLocaleString('vi-VN')} VND.`,
+      type: 'auction_buy_now',
+      refType: 'auction',
+      refId: String(auction._id),
+      metadata: { auctionId: String(auction._id), orderId: String(order._id) },
+    }),
+  ]);
 
   return sendSuccess(res, { auction, order, bid: buyNowBid });
 });

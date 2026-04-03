@@ -9,6 +9,7 @@ export const useRealtimeChat = ({
   onMessageUpdated,
   onMessagesRead,
   onTyping,
+  onNotification,
 }) => {
   const socketRef = useRef(null);
   const handlersRef = useRef({
@@ -17,6 +18,7 @@ export const useRealtimeChat = ({
     onMessageUpdated,
     onMessagesRead,
     onTyping,
+    onNotification,
   });
   const [socketState, setSocketState] = useState('offline');
 
@@ -27,8 +29,9 @@ export const useRealtimeChat = ({
       onMessageUpdated,
       onMessagesRead,
       onTyping,
+      onNotification,
     };
-  }, [onConversation, onMessage, onMessageUpdated, onMessagesRead, onTyping]);
+  }, [onConversation, onMessage, onMessageUpdated, onMessagesRead, onTyping, onNotification]);
 
   useEffect(() => {
     if (!token) {
@@ -55,6 +58,9 @@ export const useRealtimeChat = ({
     socket.on('message:updated', (payload) => handlersRef.current.onMessageUpdated?.(payload));
     socket.on('messages:read', (payload) => handlersRef.current.onMessagesRead?.(payload));
     socket.on('typing:update', (payload) => handlersRef.current.onTyping?.(payload));
+    socket.on('notification:created', (payload) =>
+      handlersRef.current.onNotification?.(payload)
+    );
 
     return () => {
       socket.disconnect();

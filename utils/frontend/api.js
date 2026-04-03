@@ -168,6 +168,10 @@ export const api = {
   adminWalletTransactions: (params = {}) => apiFetch(`/api/wallet/admin/transactions?${toQueryString({ limit: 50, ...params })}`),
   adminTopUpWallet: (body) => apiFetch('/api/wallet/admin/top-up', jsonOptions('POST', body)),
 
+  notifications: (params = {}) => apiFetch(`/api/notifications?${toQueryString({ limit: 50, ...params })}`),
+  markNotificationRead: (id) => apiFetch(`/api/notifications/${id}/read`, jsonOptions('PATCH', {})),
+  markAllNotificationsRead: () => apiFetch('/api/notifications/read-all', jsonOptions('PATCH', {})),
+
   reviews: (params = {}) => apiFetch(`/api/reviews?${toQueryString({ limit: 50, ...params })}`),
   review: (id) => apiFetch(`/api/reviews/${id}`),
   createReview: (body) => apiFetch('/api/reviews', jsonOptions('POST', body)),

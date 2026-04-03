@@ -13,6 +13,7 @@ const OrderItem = require('./OrderItem');
 const EscrowTransaction = require('./EscrowTransaction');
 const WalletTransaction = require('./WalletTransaction');
 const MomoPayment = require('./MomoPayment');
+const Notification = require('./Notification');
 const Conversation = require('./Conversation');
 const Message = require('./Message');
 const Review = require('./Review');
@@ -33,6 +34,7 @@ module.exports = {
   EscrowTransaction,
   WalletTransaction,
   MomoPayment,
+  Notification,
   Conversation,
   Message,
   Review,

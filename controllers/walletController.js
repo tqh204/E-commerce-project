@@ -2,6 +2,7 @@
 const { asyncHandler, buildPaginationMeta, parsePagination, sendSuccess } = require('../lib/http');
 const { getAvailableBalance, topUpWallet } = require('../lib/wallet');
 const { createWalletTopUp, handleMomoCallback } = require('../lib/momo');
+const { createNotification } = require('../lib/notifications');
 const { isAdmin } = require('../middleware/auth');
 
 const requireAdmin = (req) => {
@@ -110,6 +111,16 @@ const creditMomoTopUpIfNeeded = async (payment) => {
       momoTransId: payment.transId || '',
       momoRequestId: payment.requestId,
     },
+  });
+
+  await createNotification({
+    userId: payment.user,
+    title: 'Nạp ví thành công',
+    message: `Bạn đã nạp ${Number(payment.amount).toLocaleString('vi-VN')} VND vào ví.`,
+    type: 'wallet_top_up',
+    refType: 'wallet',
+    refId: String(payment.orderId),
+    metadata: { momoOrderId: payment.orderId, momoTransId: payment.transId || '' },
   });
 
   return user;

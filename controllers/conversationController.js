@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { Conversation, Media, Message, Product } = require('../schemas');
 const { emitConversationCreated, emitMessageCreated, emitMessageUpdated, emitMessagesRead } = require('../lib/socket');
+const { createNotification } = require('../lib/notifications');
 const {
   asyncHandler,
   buildPaginationMeta,
@@ -187,6 +188,27 @@ exports.createConversation = asyncHandler(async (req, res) => {
   if (message) {
     const hydratedMessage = await loadHydratedMessage(message._id);
     emitMessageCreated(hydratedConversation, hydratedMessage);
+
+    const participants = hydratedConversation.participants || [];
+    await Promise.all(
+      participants
+        .map((participant) => participant?._id || participant)
+        .filter((participantId) => String(participantId) !== String(req.user._id))
+        .map((participantId) =>
+          createNotification({
+            userId: participantId,
+            title: 'Tin nhắn mới',
+            message: `${req.user.fullName || req.user.username}: ${hydratedMessage.content || 'Đã gửi một tin nhắn.'}`,
+            type: 'chat_message',
+            refType: 'conversation',
+            refId: String(hydratedConversation._id),
+            metadata: {
+              conversationId: String(hydratedConversation._id),
+              messageId: String(hydratedMessage._id),
+            },
+          })
+        )
+    );
   }
 
   return sendSuccess(res, hydratedConversation, null, 201);
@@ -249,6 +271,27 @@ exports.sendMessage = asyncHandler(async (req, res) => {
   const hydratedMessage = await loadHydratedMessage(message._id);
 
   emitMessageCreated(hydratedConversation, hydratedMessage);
+
+  const participants = hydratedConversation.participants || [];
+  await Promise.all(
+    participants
+      .map((participant) => participant?._id || participant)
+      .filter((participantId) => String(participantId) !== String(req.user._id))
+      .map((participantId) =>
+        createNotification({
+          userId: participantId,
+          title: 'Tin nhắn mới',
+          message: `${req.user.fullName || req.user.username}: ${hydratedMessage.content || 'Đã gửi một tin nhắn.'}`,
+          type: 'chat_message',
+          refType: 'conversation',
+          refId: String(hydratedConversation._id),
+          metadata: {
+            conversationId: String(hydratedConversation._id),
+            messageId: String(hydratedMessage._id),
+          },
+        })
+      )
+  );
 
   return sendSuccess(res, hydratedMessage, null, 201);
 });

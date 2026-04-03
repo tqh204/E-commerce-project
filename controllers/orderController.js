@@ -1,4 +1,5 @@
 const { EscrowTransaction, Order, OrderItem, Product } = require('../schemas');
+const { createNotification } = require('../lib/notifications');
 const { ensureSufficientAvailableBalance, getAvailableBalance } = require('../lib/wallet');
 const {
   ensureEscrowRecord,
@@ -167,6 +168,27 @@ exports.createOrder = asyncHandler(async (req, res) => {
     });
   }
 
+  await Promise.all([
+    createNotification({
+      userId: order.buyer,
+      title: 'Đơn hàng mới',
+      message: `Bạn đã tạo đơn hàng ${order.orderCode}.`,
+      type: 'order_created',
+      refType: 'order',
+      refId: String(order._id),
+      metadata: { orderCode: order.orderCode },
+    }),
+    createNotification({
+      userId: order.seller,
+      title: 'Có đơn hàng mới',
+      message: `Bạn nhận được đơn hàng ${order.orderCode}.`,
+      type: 'order_created',
+      refType: 'order',
+      refId: String(order._id),
+      metadata: { orderCode: order.orderCode },
+    }),
+  ]);
+
   return sendSuccess(res, { order, orderItem, escrowTransaction }, null, 201);
 });
 
@@ -197,6 +219,7 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
     }
   }
 
+  const previousStatus = order.status;
   order.status = nextStatus;
   if (req.body.shippingMethod) {
     order.shippingMethod = req.body.shippingMethod;
@@ -264,6 +287,30 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
     order.cancelledAt = order.cancelledAt || new Date();
   }
   await order.save();
+
+  if (previousStatus !== order.status) {
+    const statusLabel = order.status;
+    await Promise.all([
+      createNotification({
+        userId: order.buyer,
+        title: 'Cập nhật đơn hàng',
+        message: `Đơn hàng ${order.orderCode} chuyển trạng thái: ${statusLabel}.`,
+        type: 'order_status',
+        refType: 'order',
+        refId: String(order._id),
+        metadata: { orderCode: order.orderCode, status: order.status },
+      }),
+      createNotification({
+        userId: order.seller,
+        title: 'Cập nhật đơn hàng',
+        message: `Đơn hàng ${order.orderCode} chuyển trạng thái: ${statusLabel}.`,
+        type: 'order_status',
+        refType: 'order',
+        refId: String(order._id),
+        metadata: { orderCode: order.orderCode, status: order.status },
+      }),
+    ]);
+  }
 
   return sendSuccess(res, order);
 });

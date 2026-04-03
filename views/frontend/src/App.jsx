@@ -6,6 +6,7 @@ import ProductDetailPage from './features/marketplace/ProductDetailPage';
 import SellerStorePage from './features/marketplace/SellerStorePage';
 import AuctionDetailPage from './features/marketplace/AuctionDetailPage';
 import AccountPage from './features/account/AccountPage';
+import NotificationsPage from './features/notifications/NotificationsPage';
 import OrdersPage from './features/account/OrdersPage';
 import OrderDetailPage from './features/account/OrderDetailPage';
 import EscrowDetailPage from './features/account/EscrowDetailPage';
@@ -34,7 +35,7 @@ import {
   setRememberedIdentifier,
   setStoredToken,
 } from '@frontend-utils/auth';
-import { normalizeTags, roleNames } from '@frontend-utils/format';
+import { compactText, formatDateTime, normalizeTags, roleNames } from '@frontend-utils/format';
 import { matchPath, navigateTo } from '@frontend-utils/router';
 import { useRealtimeChat } from '@frontend-utils/useRealtimeChat';
 
@@ -292,6 +293,7 @@ const App = () => {
   const [addressEditId, setAddressEditId] = useState('');
   const [walletTopUpForm, setWalletTopUpForm] = useState({ amount: '500000' });
   const [walletTransactions, setWalletTransactions] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [adminWalletUsers, setAdminWalletUsers] = useState([]);
   const [adminWalletTransactions, setAdminWalletTransactions] = useState([]);
   const [walletAdminForm, setWalletAdminForm] = useState({
@@ -357,12 +359,21 @@ const App = () => {
     [fail]
   );
 
+  useEffect(() => {
+    setNotificationOpen(false);
+  }, [pathname]);
+
   const isAdmin = useMemo(() => hasAnyUserRole(user, ['admin']), [user]);
   const canSell = useMemo(() => Boolean(user), [user]);
   const activeConversation = useMemo(
     () => conversations.find((item) => item._id === activeConversationId) || null,
     [conversations, activeConversationId]
   );
+  const unreadNotificationCount = useMemo(
+    () => notifications.filter((item) => !item.isRead).length,
+    [notifications]
+  );
+  const recentNotifications = useMemo(() => notifications.slice(0, 6), [notifications]);
   const sellerAuctions = useMemo(
     () => auctions.filter((item) => String(item.seller?._id || item.seller) === String(user?._id)),
     [auctions, user]
@@ -375,6 +386,17 @@ const App = () => {
         ...current.map((item) => (item._id === conversation._id ? { ...item, ...conversation } : item)),
       ]).sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0))
     );
+  }, []);
+
+  const handleNotificationCreated = useCallback((payload) => {
+    if (!payload?._id) return;
+    setNotifications((current) => {
+      const next = [payload, ...current.filter((item) => String(item._id) !== String(payload._id))];
+      return next.slice(0, 100);
+    });
+    const title = payload.title || 'Thông báo';
+    const message = payload.message || '';
+    setNotice(message ? `${title}: ${message}` : title);
   }, []);
   const appendMedia = useCallback(
     (payload) => setMediaLibrary((current) => uniq([...uploads(payload), ...current])),
@@ -402,6 +424,7 @@ const App = () => {
 
   const messagesRoute = pathname === '/messages' || Boolean(routeConversationId);
   const accountRoute = pathname === '/account';
+  const notificationsRoute = pathname === '/notifications';
   const ordersRoute = pathname === '/orders' || Boolean(routeOrderId);
   const adminRoute = pathname.startsWith('/admin');
   const docsRoute = pathname === '/docs';
@@ -499,16 +522,25 @@ const App = () => {
       setReviews([]);
       setConversations([]);
       setWalletTransactions([]);
+      setNotifications([]);
       return;
     }
 
-    const [addressesPayload, ordersPayload, reviewsPayload, conversationsPayload, walletTransactionsPayload] =
+    const [
+      addressesPayload,
+      ordersPayload,
+      reviewsPayload,
+      conversationsPayload,
+      walletTransactionsPayload,
+      notificationsPayload,
+    ] =
       await Promise.allSettled([
         api.addresses(),
         api.orders({ scope: 'mine' }),
         api.reviews(),
         api.conversations(),
         api.walletTransactions(),
+        api.notifications(),
       ]);
 
     if (addressesPayload.status === 'fulfilled') {
@@ -525,6 +557,9 @@ const App = () => {
     }
     if (walletTransactionsPayload.status === 'fulfilled') {
       setWalletTransactions(walletTransactionsPayload.value.data || []);
+    }
+    if (notificationsPayload.status === 'fulfilled') {
+      setNotifications(notificationsPayload.value.data || []);
     }
   }, [token]);
 
@@ -823,7 +858,9 @@ const App = () => {
         return [...next];
       });
     },
+    onNotification: handleNotificationCreated,
   });
+  const [notificationOpen, setNotificationOpen] = useState(false);
 
   const onTypingChange = useCallback(() => {
     if (!activeConversationId) return;
@@ -1350,6 +1387,24 @@ const App = () => {
     navigateTo(`/sell/products/${product._id}/edit`);
   }, []);
 
+  const handleMarkNotificationRead = useCallback(
+    async (notificationId) => {
+      if (!notificationId) return;
+      await api.markNotificationRead(notificationId);
+      setNotifications((current) =>
+        current.map((item) =>
+          String(item._id) === String(notificationId) ? { ...item, isRead: true } : item
+        )
+      );
+    },
+    []
+  );
+
+  const handleMarkAllNotificationsRead = useCallback(async () => {
+    await api.markAllNotificationsRead();
+    setNotifications((current) => current.map((item) => ({ ...item, isRead: true })));
+  }, []);
+
   const handleEditProductAdmin = useCallback((product) => {
     navigateTo(`/admin/products/${product._id}/edit`);
   }, []);
@@ -1870,6 +1925,9 @@ const App = () => {
     setWalletTopUpForm,
     onTopUpWallet: (event) => run(() => handleTopUpWallet(event)),
     walletTransactions,
+    notifications,
+    onMarkNotificationRead: (id) => run(() => handleMarkNotificationRead(id)),
+    onMarkAllNotificationsRead: () => run(() => handleMarkAllNotificationsRead()),
   };
 
   const commonChatProps = {
@@ -1972,6 +2030,7 @@ const App = () => {
     if (pathname === '/login') return 'Đăng nhập';
     if (pathname === '/register') return 'Đăng ký';
     if (pathname === '/account') return 'Tài khoản';
+    if (pathname === '/notifications') return 'Thông báo';
     if (pathname.startsWith('/messages')) return 'Tin nhắn';
     if (pathname.startsWith('/sell/products/create')) return 'Tạo sản phẩm';
     if (pathname.startsWith('/sell/products')) return 'Quản lý sản phẩm';
@@ -2117,6 +2176,16 @@ const App = () => {
     }
     if (pathname === '/account') {
       return renderAuthRequired(<AccountPage {...commonAccountProps} />, 'Tài khoản');
+    }
+    if (pathname === '/notifications') {
+      return renderAuthRequired(
+        <NotificationsPage
+          notifications={notifications}
+          onMarkNotificationRead={(id) => run(() => handleMarkNotificationRead(id))}
+          onMarkAllNotificationsRead={() => run(() => handleMarkAllNotificationsRead())}
+        />,
+        'Thông báo'
+      );
     }
     if (pathname === '/orders') {
       return renderAuthRequired(<OrdersPage {...commonAccountProps} />, 'Đơn hàng');
@@ -2264,8 +2333,8 @@ const App = () => {
               <button type="submit" className="primary-btn">Tìm</button>
             </form>
           ) : null}
-          <div className="site-header__right">
-            <nav className="site-nav">
+            <div className="site-header__right">
+              <nav className="site-nav">
               {mainNav
                 .filter((item) => !item.requiresAuth || user)
                 .filter((item) => !item.requiresAdmin || isAdmin)
@@ -2311,11 +2380,70 @@ const App = () => {
                     Đăng ký
                   </AppLink>
                 </>
-              ) : (
-                <button type="button" onClick={() => run(handleLogout)}>
-                  {'\u0110\u0103ng xu\u1ea5t'}
-                </button>
-              )}
+                ) : (
+                  <>
+                    <button type="button" onClick={() => run(handleLogout)}>
+                      {'\u0110\u0103ng xu\u1ea5t'}
+                    </button>
+                    {user ? (
+                      <div className="notification-shell">
+                        <button
+                          type="button"
+                          className="notification-pill"
+                          onClick={() => setNotificationOpen((open) => !open)}
+                        >
+                          Thông báo
+                          {unreadNotificationCount ? (
+                            <span className="notification-badge">{unreadNotificationCount}</span>
+                          ) : null}
+                        </button>
+                        {notificationOpen ? (
+                          <div className="notification-panel">
+                            <div className="notification-panel__head">
+                              <strong>Thông báo</strong>
+                              <div className="notification-panel__actions">
+                                <button
+                                  type="button"
+                                  className="ghost-btn"
+                                  onClick={() => run(() => handleMarkAllNotificationsRead())}
+                                >
+                                  Đã đọc hết
+                                </button>
+                                <AppLink to="/notifications" className="route-pill route-pill--button">
+                                  Xem tất cả
+                                </AppLink>
+                              </div>
+                            </div>
+                            <div className="notification-panel__list">
+                              {recentNotifications.map((item) => (
+                                <button
+                                  key={item._id}
+                                  type="button"
+                                  className={`notification-item${item.isRead ? '' : ' unread'}`}
+                                  onClick={() => run(() => handleMarkNotificationRead(item._id))}
+                                >
+                                  <div>
+                                    <strong>{item.title}</strong>
+                                    <p>{compactText(item.message || 'Không có nội dung', 90)}</p>
+                                  </div>
+                                  <small>{formatDateTime(item.createdAt)}</small>
+                                </button>
+                              ))}
+                              {!recentNotifications.length ? (
+                                <div className="notification-empty">
+                                  <strong>Chưa có thông báo.</strong>
+                                  <p className="muted">
+                                    Thông báo nạp ví, đơn hàng, chat, đấu giá sẽ hiển thị ở đây.
+                                  </p>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </>
+                )}
             </nav>
           </div>
         </div>
