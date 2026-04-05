@@ -7,10 +7,6 @@ const sendReactApp = function(req, res) {
   res.sendFile(reactIndex);
 };
 
-router.get('/legacy-marketplace', function(req, res) {
-  res.sendFile(path.join(__dirname, '..', 'marketplace.html'));
-});
-
 router.get('/react', sendReactApp);
 
 router.get('/', function(req, res) {

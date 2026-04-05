@@ -61,9 +61,9 @@ const main = async () => {
     assert.equal(adminCreatePage.response.status, 200);
     assert.match(adminCreatePage.text, /Marketplace React/i);
 
-    const docs = await request('/docs.html');
-    assert.equal(docs.response.status, 200);
-    assert.match(docs.text, /Marketplace API Explorer/i);
+    const docsPage = await request('/docs');
+    assert.equal(docsPage.response.status, 200);
+    assert.match(docsPage.text, /Marketplace React/i);
 
     const openapi = await request('/api-docs/openapi.json');
     assert.equal(openapi.response.status, 200);

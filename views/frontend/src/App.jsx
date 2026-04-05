@@ -2614,15 +2614,7 @@ const App = () => {
             hàng, đấu giá và quản trị.
           </span>
           <div className="actions-row wrap">
-            <a href="/docs.html" target="_blank" rel="noreferrer">
-              Docs cũ
-            </a>
-            <a href="/legacy-marketplace" target="_blank" rel="noreferrer">
-              HTML cũ
-            </a>
-            <a href="/admin.html" target="_blank" rel="noreferrer">
-              Admin HTML cũ
-            </a>
+            <AppLink to="/docs" className="route-pill route-pill--button">{'T\u00e0i li\u1ec7u API'}</AppLink>
           </div>
         </div>
       </footer>

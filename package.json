@@ -11,7 +11,8 @@
     "seed:marketplace": "node seed-marketplace.js",
     "check:schemas": "node -e \"require('./schemas')\"",
     "normalize:chotot": "node normalize-chotot-products.js",
-    "test:smoke": "node tests/smoke.js"
+    "test:smoke": "node tests/smoke.js",
+    "fix:chotot": "node fix-chotot-products.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.1",
