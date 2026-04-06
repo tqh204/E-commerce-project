@@ -10,6 +10,7 @@ import NotificationsPage from './features/notifications/NotificationsPage';
 import OrdersPage from './features/account/OrdersPage';
 import OrderDetailPage from './features/account/OrderDetailPage';
 import EscrowDetailPage from './features/account/EscrowDetailPage';
+import WalletPage from './features/account/WalletPage';
 import MessagesPage from './features/chat/MessagesPage';
 import SellerProductsPage from './features/seller/SellerProductsPage';
 import SellerProductFormPage from './features/seller/SellerProductFormPage';
@@ -424,6 +425,7 @@ const App = () => {
 
   const messagesRoute = pathname === '/messages' || Boolean(routeConversationId);
   const accountRoute = pathname === '/account';
+  const walletRoute = pathname === '/wallet';
   const notificationsRoute = pathname === '/notifications';
   const ordersRoute = pathname === '/orders' || Boolean(routeOrderId);
   const adminRoute = pathname.startsWith('/admin');
@@ -431,7 +433,7 @@ const App = () => {
   const homeRoute = pathname === '/' || Boolean(routeProductId);
   const sellerRoute = pathname.startsWith('/sell');
   const headerSearchVisible =
-    homeRoute || pathname === '/messages' || pathname === '/account' || pathname === '/orders';
+    homeRoute || pathname === '/messages' || pathname === '/account' || pathname === '/orders' || pathname === '/wallet';
 
   const resetProductForm = useCallback(() => {
     setProductForm(empty.product);
@@ -2011,13 +2013,70 @@ const App = () => {
   };
 
   const mainNav = [
-    { label: 'Trang chủ', to: '/' },
-    { label: 'Tài khoản', to: '/account', requiresAuth: true },
-    { label: 'Đơn hàng', to: '/orders', requiresAuth: true },
-    { label: 'Tin nhắn', to: '/messages', requiresAuth: true },
-    { label: 'Đăng bán', to: '/sell/products/create', requiresAuth: true, requiresSeller: true },
-    { label: 'Quản trị', to: '/admin', requiresAdmin: true },
+    { id: 'home', label: 'Trang chủ', to: '/' },
+    { id: 'account', label: 'Tài khoản', to: '/account', requiresAuth: true },
+    { id: 'wallet', label: 'Ví tiền', to: '/wallet', requiresAuth: true },
+    { id: 'orders', label: 'Đơn hàng', to: '/orders', requiresAuth: true },
+    { id: 'messages', label: 'Tin nhắn', to: '/messages', requiresAuth: true },
+    { id: 'sell', label: 'Đăng bán', to: '/sell/products/create', requiresAuth: true, requiresSeller: true },
+    { id: 'admin', label: 'Quản trị', to: '/admin', requiresAdmin: true },
   ];
+
+  const NAV_ICONS = {
+    home: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      </svg>
+    ),
+    account: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M4 20a8 8 0 0 1 16 0" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    ),
+    wallet: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="6" width="18" height="12" rx="3" fill="none" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M17 12h3v3h-3z" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      </svg>
+    ),
+    orders: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 4h10l2 4v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M7 4v4h10V4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      </svg>
+    ),
+    messages: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      </svg>
+    ),
+    sell: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7h16v10H4z" fill="none" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M8 7V5h8v2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M12 10v4M10 12h4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    ),
+    admin: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3 4 6v6c0 5 3.5 7.5 8 9 4.5-1.5 8-4 8-9V6z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M12 8v4l2 2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    ),
+    logout: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M10 4h-5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M14 7l5 5-5 5M19 12H9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    notifications: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 17h12l-1.5-2.5V11a4.5 4.5 0 0 0-9 0v3.5z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M10 19a2 2 0 0 0 4 0" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    ),
+  };
 
   const currentPageLabel = useMemo(() => {
     if (pathname === '/') return 'Trang chủ';
@@ -2030,6 +2089,7 @@ const App = () => {
     if (pathname === '/login') return 'Đăng nhập';
     if (pathname === '/register') return 'Đăng ký';
     if (pathname === '/account') return 'Tài khoản';
+    if (pathname === '/wallet') return 'Ví tiền';
     if (pathname === '/notifications') return 'Thông báo';
     if (pathname.startsWith('/messages')) return 'Tin nhắn';
     if (pathname.startsWith('/sell/products/create')) return 'Tạo sản phẩm';
@@ -2176,6 +2236,9 @@ const App = () => {
     }
     if (pathname === '/account') {
       return renderAuthRequired(<AccountPage {...commonAccountProps} />, 'Tài khoản');
+    }
+    if (pathname === '/wallet') {
+      return renderAuthRequired(<WalletPage {...commonAccountProps} />, 'Ví tiền');
     }
     if (pathname === '/notifications') {
       return renderAuthRequired(
@@ -2348,20 +2411,23 @@ const App = () => {
                         ? ordersRoute
                       : item.to === '/account'
                         ? accountRoute
-                        : item.to === '/docs'
-                            ? docsRoute
-                            : item.to === '/admin'
-                              ? adminRoute
-                              : item.to === '/sell/products/create'
-                                ? sellerRoute
-                                : pathname.startsWith(item.to);
+                        : item.to === '/wallet'
+                          ? walletRoute
+                          : item.to === '/docs'
+                              ? docsRoute
+                              : item.to === '/admin'
+                                ? adminRoute
+                                : item.to === '/sell/products/create'
+                                  ? sellerRoute
+                                  : pathname.startsWith(item.to);
                   return (
                     <AppLink
                       key={item.to}
                       to={item.to}
                       className={`site-nav__link${isActive ? ' active' : ''}`}
                     >
-                      {item.label}
+                      <span className="nav-icon">{NAV_ICONS[item.id]}</span>
+                      <span>{item.label}</span>
                     </AppLink>
                   );
                 })}
@@ -2371,19 +2437,22 @@ const App = () => {
                     to="/login"
                     className={`site-nav__link${pathname === '/login' ? ' active' : ''}`}
                   >
-                    Đăng nhập
+                    <span className="nav-icon">{NAV_ICONS.account}</span>
+                    <span>Đăng nhập</span>
                   </AppLink>
                   <AppLink
                     to="/register"
                     className={`site-nav__link${pathname === '/register' ? ' active' : ''}`}
                   >
-                    Đăng ký
+                    <span className="nav-icon">{NAV_ICONS.account}</span>
+                    <span>Đăng ký</span>
                   </AppLink>
                 </>
                 ) : (
                   <>
                     <button type="button" onClick={() => run(handleLogout)}>
-                      {'\u0110\u0103ng xu\u1ea5t'}
+                      <span className="nav-icon">{NAV_ICONS.logout}</span>
+                      <span>Đăng xuất</span>
                     </button>
                     {user ? (
                       <div className="notification-shell">
@@ -2392,7 +2461,8 @@ const App = () => {
                           className="notification-pill"
                           onClick={() => setNotificationOpen((open) => !open)}
                         >
-                          Thông báo
+                          <span className="nav-icon">{NAV_ICONS.notifications}</span>
+                          <span>Thông báo</span>
                           {unreadNotificationCount ? (
                             <span className="notification-badge">{unreadNotificationCount}</span>
                           ) : null}
@@ -2450,23 +2520,6 @@ const App = () => {
       </header>
 
       <main className="site-main">
-        {!homeRoute ? (
-          <SectionCard
-            title={currentPageLabel}
-            subtitle="Trang chức năng"
-            className="wide"
-            actions={
-              <div className="actions-row wrap">
-                {user ? <span className="route-pill">{user.fullName || user.username}</span> : null}
-                <span className="route-pill">Vai trò: {roleNames(user?.roles || [])}</span>
-                <span className="route-pill">Socket: {socketState}</span>
-                <span className="route-pill">Trang: {currentPageLabel}</span>
-              </div>
-            }
-          >
-            <p className="muted">{notice}</p>
-          </SectionCard>
-        ) : null}
 
         {sellerRoute ? (
           <SectionCard

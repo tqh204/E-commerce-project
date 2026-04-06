@@ -1,6 +1,6 @@
 ﻿import SectionCard from '../components/SectionCard';
 import AppLink from '../components/AppLink';
-import { compactText, formatDateTime, formatPrice, roleNames } from '@frontend-utils/format';
+import { roleNames } from '@frontend-utils/format';
 
 const ADDRESS_LABELS = {
   home: 'Nhà riêng',
@@ -8,22 +8,6 @@ const ADDRESS_LABELS = {
   warehouse: 'Kho hàng',
   pickup: 'Điểm lấy hàng',
   other: 'Khác',
-};
-
-const WALLET_TYPE_LABELS = {
-  top_up: 'Nạp tiền',
-  auction_bid_reserve: 'Khóa tiền đặt giá',
-  auction_bid_release: 'Mở khóa tiền đặt giá',
-  escrow_hold: 'Giữ tiền ký quỹ',
-  escrow_release: 'Giải ngân ký quỹ',
-  escrow_refund: 'Hoàn tiền ký quỹ',
-};
-
-const DIRECTION_LABELS = {
-  credit: 'Cộng tiền',
-  debit: 'Trừ tiền',
-  lock: 'Khóa tiền',
-  unlock: 'Mở khóa',
 };
 
 const AccountView = ({
@@ -40,34 +24,54 @@ const AccountView = ({
   onResetAddressForm,
   onDeleteAddress,
   orders,
-  walletTopUpForm,
-  setWalletTopUpForm,
-  onTopUpWallet,
-  walletTransactions = [],
 }) => {
   const addressPreview =
     [addressForm.street, addressForm.ward, addressForm.district, addressForm.province]
       .filter(Boolean)
       .join(', ') || 'Địa chỉ đầy đủ sẽ hiển thị ở đây sau khi bạn nhập xong.';
 
-  const availableBalance = Math.max(
-    Number(user?.balance || 0) - Number(user?.lockedBalance || 0),
-    0
-  );
+  const profileInitials = (user?.fullName || user?.username || 'U')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase();
 
   return (
     <div className="view-grid">
       <SectionCard title="Hồ sơ" subtitle="Thông tin tài khoản">
         {user ? (
-          <form className="stack gap-sm" onSubmit={onSaveProfile}>
-            <div className="meta-grid">
-              <span>Tên đăng nhập: {user.username}</span>
-              <span>Email: {user.email}</span>
-              <span>Vai trò hiện tại: {roleNames(user.roles)}</span>
-              <span>Đánh giá: {user.ratingAvg || 0}</span>
+          <form className="profile-card" onSubmit={onSaveProfile}>
+            <div className="profile-header">
+              <div className="profile-avatar">
+                {user.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={user.fullName || user.username} />
+                ) : (
+                  <span>{profileInitials}</span>
+                )}
+              </div>
+              <div className="profile-header__meta">
+                <strong>{user.fullName || user.username}</strong>
+                <span className="muted">{user.email}</span>
+              </div>
+              <div className="profile-stat-grid">
+                <div>
+                  <span className="muted">Username</span>
+                  <strong>{user.username}</strong>
+                </div>
+                <div>
+                  <span className="muted">Vai trò</span>
+                  <strong>{roleNames(user.roles)}</strong>
+                </div>
+                <div>
+                  <span className="muted">Đánh giá</span>
+                  <strong>{user.ratingAvg || 0}</strong>
+                </div>
+              </div>
             </div>
 
-            <div className="workspace-note compact-note">
+            <div className="workspace-note profile-note">
               <strong>Tài khoản giao dịch dùng role chung</strong>
               <span className="muted">
                 Một tài khoản user có thể vừa mua hàng, vừa đăng bán, nhắn tin và tham gia đấu giá.
@@ -75,97 +79,44 @@ const AccountView = ({
               </span>
             </div>
 
-            <input
-              value={profileForm.fullName}
-              onChange={(event) =>
-                setProfileForm((current) => ({ ...current, fullName: event.target.value }))
-              }
-              placeholder="Họ và tên"
-            />
-            <input
-              value={profileForm.phone}
-              onChange={(event) =>
-                setProfileForm((current) => ({ ...current, phone: event.target.value }))
-              }
-              placeholder="Số điện thoại"
-            />
-            <input
-              value={profileForm.avatarUrl}
-              onChange={(event) =>
-                setProfileForm((current) => ({ ...current, avatarUrl: event.target.value }))
-              }
-              placeholder="Liên kết ảnh đại diện"
-            />
-            <textarea
-              value={profileForm.bio}
-              onChange={(event) =>
-                setProfileForm((current) => ({ ...current, bio: event.target.value }))
-              }
-              placeholder="Giới thiệu ngắn"
-              rows={3}
-            />
+            <div className="profile-form-grid">
+              <input
+                value={profileForm.fullName}
+                onChange={(event) =>
+                  setProfileForm((current) => ({ ...current, fullName: event.target.value }))
+                }
+                placeholder="Họ và tên"
+              />
+              <input
+                value={profileForm.phone}
+                onChange={(event) =>
+                  setProfileForm((current) => ({ ...current, phone: event.target.value }))
+                }
+                placeholder="Số điện thoại"
+              />
+              <input
+                value={profileForm.avatarUrl}
+                onChange={(event) =>
+                  setProfileForm((current) => ({ ...current, avatarUrl: event.target.value }))
+                }
+                placeholder="Liên kết ảnh đại diện"
+              />
+              <textarea
+                value={profileForm.bio}
+                onChange={(event) =>
+                  setProfileForm((current) => ({ ...current, bio: event.target.value }))
+                }
+                placeholder="Giới thiệu ngắn"
+                rows={3}
+              />
+            </div>
 
-            <button type="submit">Cập nhật hồ sơ</button>
+            <button type="submit" className="primary-btn">Cập nhật hồ sơ</button>
           </form>
         ) : (
           <p className="muted">Đăng nhập để quản lý hồ sơ và dữ liệu cá nhân.</p>
         )}
       </SectionCard>
-
-      <SectionCard title="Ví tiền" subtitle="Số dư, nạp tiền và lịch sử giao dịch" className="wide">
-        {user ? (
-          <div className="stack gap-sm">
-            <div className="meta-grid">
-              <span>Số dư ví: {formatPrice(user.balance || 0)} VND</span>
-              <span>Tiền đang khóa: {formatPrice(user.lockedBalance || 0)} VND</span>
-              <span>Số dư khả dụng: {formatPrice(availableBalance)} VND</span>
-            </div>
-
-            <form className="actions-row wrap" onSubmit={onTopUpWallet}>
-              <input
-                type="number"
-                min="10000"
-                step="10000"
-                value={walletTopUpForm.amount}
-                onChange={(event) =>
-                  setWalletTopUpForm((current) => ({ ...current, amount: event.target.value }))
-                }
-                placeholder="Số tiền muốn nạp"
-              />
-              <button type="submit">Nạp tiền vào ví</button>
-            </form>
-
-            <div className="resource-list">
-              {walletTransactions.map((item) => (
-                <article key={item._id} className="resource-item">
-                  <div>
-                    <strong>{WALLET_TYPE_LABELS[item.type] || item.type}</strong>
-                    <p>{compactText(item.description || 'Không có ghi chú', 120)}</p>
-                    <small>{formatDateTime(item.createdAt)}</small>
-                  </div>
-                  <div className="resource-item__meta">
-                    <span>{DIRECTION_LABELS[item.direction] || item.direction}</span>
-                    <strong>{formatPrice(item.amount)} VND</strong>
-                    <small>
-                      Số dư: {formatPrice(item.balanceAfter || 0)} VND | Khóa: {formatPrice(item.lockedAfter || 0)} VND
-                    </small>
-                  </div>
-                </article>
-              ))}
-
-              {!walletTransactions.length ? (
-                <div className="empty-state compact-empty">
-                  <strong>Chưa có giao dịch ví nào.</strong>
-                  <p className="muted">Khi bạn nạp tiền, đặt giá hoặc hoàn tất ký quỹ, lịch sử sẽ hiện ở đây.</p>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <p className="muted">Đăng nhập để xem ví tiền và nạp thêm số dư.</p>
-        )}
-      </SectionCard>
-
 
       <div id="dia-chi-giao-hang">
         <SectionCard
