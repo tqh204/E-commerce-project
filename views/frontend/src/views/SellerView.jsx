@@ -79,7 +79,6 @@ const SellerView = ({
         product.category?.name,
         product.region,
         product.city,
-        ...(product.tags || []),
       ]
         .filter(Boolean)
         .join(' ')
@@ -272,12 +271,6 @@ const SellerView = ({
                 required
               />
 
-              <input
-                value={productForm.tags}
-                onChange={(event) => setProductForm((current) => ({ ...current, tags: event.target.value }))}
-                placeholder="Từ khóa tìm kiếm, cách nhau bởi dấu phẩy"
-              />
-
               <textarea
                 value={productForm.addressText}
                 onChange={(event) =>
@@ -343,7 +336,7 @@ const SellerView = ({
             <input
               value={productQuery}
               onChange={(event) => setProductQuery(event.target.value)}
-              placeholder="Tìm theo tiêu đề, mô tả, tags..."
+              placeholder="Tìm theo tiêu đề, mô tả hoặc khu vực..."
             />
             <select
               value={productStatusFilter}
@@ -362,9 +355,9 @@ const SellerView = ({
             </div>
           </div>
 
-          <div className="resource-list">
+          <div className="resource-list admin-resource-list admin-resource-list--products">
             {filteredProducts.map((product) => (
-              <article key={product._id} className="resource-item admin-item-card">
+              <article key={product._id} className="resource-item admin-item-card admin-product-card">
                 <div>
                   <div className="tag-row">
                     <strong>{product.title}</strong>

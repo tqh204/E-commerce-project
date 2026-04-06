@@ -41,7 +41,7 @@ import { matchPath, navigateTo } from '@frontend-utils/router';
 import { useRealtimeChat } from '@frontend-utils/useRealtimeChat';
 
 const PASSWORD_RULE_TEXT =
-  'Mat khau phai co it nhat 8 ky tu, gom chu hoa, chu thuong, so va ky tu dac biet.';
+  'Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.';
 const isStrongPassword = (value = '') =>
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(value);
 const USERNAME_RULE = /^[a-z0-9_-]{3,30}$/i;
@@ -96,7 +96,7 @@ const empty = {
   product: {
     categoryId: '',
     title: '',
-    description: 'Sản phẩm mới được tạo từ frontend React.',
+    description: '',
     saleType: 'fixed_price',
     price: '100000',
     inventory: '1',
@@ -132,7 +132,7 @@ const empty = {
     name: '',
     slug: '',
     description: '',
-    icon: '',
+    image: '',
     parentCategory: '',
     sortOrder: '0',
     isActive: true,
@@ -317,6 +317,8 @@ const App = () => {
   const [users, setUsers] = useState([]);
   const [categoryForm, setCategoryForm] = useState(empty.category);
   const [categoryEditId, setCategoryEditId] = useState('');
+  const [categoryImageFile, setCategoryImageFile] = useState(null);
+  const [categoryImagePreview, setCategoryImagePreview] = useState('');
   const [importForm, setImportForm] = useState(empty.importForm);
   const [importBatches, setImportBatches] = useState([]);
   const [selectedBatch, setSelectedBatch] = useState(null);
@@ -432,8 +434,6 @@ const App = () => {
   const docsRoute = pathname === '/docs';
   const homeRoute = pathname === '/' || Boolean(routeProductId);
   const sellerRoute = pathname.startsWith('/sell');
-  const headerSearchVisible =
-    homeRoute || pathname === '/messages' || pathname === '/account' || pathname === '/orders' || pathname === '/wallet';
 
   const resetProductForm = useCallback(() => {
     setProductForm(empty.product);
@@ -462,7 +462,19 @@ const App = () => {
   const resetCategoryForm = useCallback(() => {
     setCategoryForm(empty.category);
     setCategoryEditId('');
+    setCategoryImageFile(null);
+    setCategoryImagePreview((current) => {
+      if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
+      return '';
+    });
   }, []);
+
+  useEffect(
+    () => () => {
+      if (categoryImagePreview?.startsWith('blob:')) URL.revokeObjectURL(categoryImagePreview);
+    },
+    [categoryImagePreview]
+  );
 
   const closeBidDialog = useCallback(() => {
     setBidDialog({
@@ -891,7 +903,7 @@ const App = () => {
       setFilters(nextFilters);
       setCatalogPage(1);
       navigateTo(buildCatalogPath(nextFilters, 1));
-      setNotice('Da cap nhat danh sach san pham.');
+      setNotice('Đã cập nhật danh sách sản phẩm.');
     },
     [filters]
   );
@@ -916,22 +928,12 @@ const App = () => {
     [routeSellerUserId]
   );
 
-  const handleHeaderSearch = useCallback(
-    (event) => {
-      event.preventDefault();
-      setCatalogPage(1);
-      navigateTo(buildCatalogPath(filters, 1));
-      setNotice('Da tim kiem tu thanh header.');
-    },
-    [filters]
-  );
-
   const handleLogin = useCallback(
     async (event) => {
       event.preventDefault();
       const identifier = `${loginForm.identifier || ''}`.trim();
       if (!identifier || !loginForm.password) {
-        setNotice('Vui long nhap tai khoan va mat khau.');
+        setNotice('Vui lòng nhập tài khoản và mật khẩu.');
         return;
       }
       const payload = await api.login({ identifier, password: loginForm.password });
@@ -947,7 +949,7 @@ const App = () => {
       setLoginForm(createLoginForm(identifier));
       setShowLoginPassword(false);
       navigateTo('/');
-      setNotice(`Da tao tai khoan ${payload.data.user.fullName || payload.data.user.username}.`);
+      setNotice(`Đã đăng nhập tài khoản ${payload.data.user.fullName || payload.data.user.username}.`);
     },
     [loginForm, rememberAccount]
   );
@@ -962,19 +964,19 @@ const App = () => {
       const password = `${registerForm.password || ''}`;
       const confirmPassword = `${registerForm.confirmPassword || ''}`;
       if (!username || !email || !fullName || !password || !confirmPassword) {
-        setNotice('Vui long nhap du username, email, ho ten va hai muc mat khau.');
+        setNotice('Vui lòng nhập đủ username, email, họ tên và hai mục mật khẩu.');
         return;
       }
       if (!USERNAME_RULE.test(username)) {
-        setNotice('Username chi nen gom chu, so, gach duoi hoac gach ngang.');
+        setNotice('Username chỉ nên gồm chữ, số, gạch dưới hoặc gạch ngang.');
         return;
       }
       if (phone && !PHONE_RULE.test(phone)) {
-        setNotice('So dien thoai chua dung dinh dang.');
+        setNotice('Số điện thoại chưa đúng định dạng.');
         return;
       }
       if (password !== confirmPassword) {
-        setNotice('Mat khau nhap lai chua khop.');
+        setNotice('Mật khẩu nhập lại chưa khớp.');
         return;
       }
       if (!isStrongPassword(password)) {
@@ -997,7 +999,7 @@ const App = () => {
       setShowRegisterConfirmPassword(false);
       setLoginForm(createLoginForm(email || username));
       navigateTo('/');
-      setNotice(`Da tao tai khoan ${payload.data.user.fullName || payload.data.user.username}.`);
+      setNotice(`Đã tạo tài khoản ${payload.data.user.fullName || payload.data.user.username}.`);
     },
     [registerForm]
   );
@@ -1015,7 +1017,7 @@ const App = () => {
     setReplyTo(null);
     setMessages([]);
     navigateTo('/');
-    setNotice('Da dang xuat.');
+    setNotice('Đã đăng xuất.');
   }, []);
 
   const handleSaveProfile = useCallback(
@@ -1024,7 +1026,7 @@ const App = () => {
       const payload = await api.updateMyProfile(profileForm);
       setUser(payload.data);
       setProfileForm(mapProfileToForm(payload.data));
-      setNotice('Da cap nhat ho so.');
+      setNotice('Đã cập nhật hồ sơ.');
     },
     [profileForm]
   );
@@ -1080,11 +1082,11 @@ const App = () => {
       const street = `${addressForm.street || ''}`.trim();
       const fullAddress = [street, ward, district, province].filter(Boolean).join(', ');
       if (!fullName || !phone || !province || !district || !street) {
-        setNotice('Vui long nhap nguoi nhan, so dien thoai, tinh/thanh, quan/huyen va dia chi chi tiet.');
+        setNotice('Vui lòng nhập người nhận, số điện thoại, tỉnh/thành, quận/huyện và địa chỉ chi tiết.');
         return;
       }
       if (!PHONE_RULE.test(phone)) {
-        setNotice('So dien thoai chua dung dinh dang.');
+        setNotice('Số điện thoại chưa đúng định dạng.');
         return;
       }
       const payload = {
@@ -1103,11 +1105,11 @@ const App = () => {
       if (addressEditId) {
         const response = await api.updateAddress(addressEditId, payload);
         savedAddress = response.data || { _id: addressEditId, ...payload };
-        setNotice('Da cap nhat dia chi.');
+        setNotice('Đã cập nhật địa chỉ.');
       } else {
         const response = await api.createAddress(payload);
         savedAddress = response.data || payload;
-        setNotice('Da tao dia chi moi.');
+        setNotice('Đã tạo địa chỉ mới.');
       }
       resetAddressForm();
       await loadPrivate();
@@ -1135,7 +1137,7 @@ const App = () => {
         if (orderId) {
           await loadOrderDetail(orderId);
           navigateTo('/orders');
-          setNotice('Da luu dia chi va tao don hang cho xac nhan.');
+          setNotice('Đã lưu địa chỉ và tạo đơn hàng chờ xác nhận.');
         }
       }
     },
@@ -1172,7 +1174,7 @@ const App = () => {
       await api.deleteAddress(addressId);
       if (addressEditId === addressId) resetAddressForm();
       await loadPrivate();
-      setNotice('Da xoa dia chi.');
+      setNotice('Đã xóa địa chỉ.');
     },
     [addressEditId, loadPrivate, resetAddressForm]
   );
@@ -1192,7 +1194,7 @@ const App = () => {
       if (selectedOrder?.order?._id === orderId) {
         await loadOrderDetail(orderId);
       }
-      setNotice(`Da cap nhat order sang ${status}.`);
+      setNotice(`Đã cập nhật đơn hàng sang trạng thái ${status}.`);
     },
     [loadOrderDetail, loadPrivate, selectedOrder]
   );
@@ -1207,7 +1209,7 @@ const App = () => {
         }
       }
       await loadPrivate();
-      setNotice('Da xoa don hang.');
+      setNotice('Đã xóa đơn hàng.');
     },
     [loadPrivate, routeOrderId, selectedOrder]
   );
@@ -1225,14 +1227,14 @@ const App = () => {
       if (selectedOrder?.order?._id === orderId) {
         await loadOrderDetail(orderId);
       }
-      setNotice('Da gan dia chi giao hang cho don.');
+      setNotice('Đã gán địa chỉ giao hàng cho đơn.');
     },
     [addresses, loadOrderDetail, loadPrivate, selectedOrder]
   );
 
   const handleEscrowAction = useCallback(
     async (escrowId, action) => {
-      const reason = window.prompt(`Nhap ghi chu cho ${action}`, `${action} tu frontend React`) || '';
+      const reason = window.prompt(`Nhập ghi chú cho ${action}`, `${action} từ frontend React`) || '';
       await api.updateEscrow(escrowId, action, { reason, notes: reason });
       await loadPrivate();
       const profilePayload = await api.me().catch(() => null);
@@ -1243,7 +1245,7 @@ const App = () => {
       if (selectedEscrow?._id === escrowId) {
         await loadEscrowDetail(escrowId);
       }
-      setNotice(`Da cap nhat escrow: ${action}.`);
+      setNotice(`Đã cập nhật ký quỹ: ${action}.`);
     },
     [isAdmin, loadAdmin, loadEscrowDetail, loadPrivate, selectedEscrow]
   );
@@ -1257,19 +1259,19 @@ const App = () => {
       });
       setReviewForm(empty.review);
       await loadPrivate();
-      setNotice('Da tao review.');
+      setNotice('Đã tạo đánh giá.');
     },
     [loadPrivate, reviewForm]
   );
 
   const handleRespondReview = useCallback(
     async (reviewId) => {
-      const content = window.prompt('Noi dung phan hoi review', 'Cam on ban da danh gia.');
+      const content = window.prompt('Nội dung phản hồi đánh giá', 'Cảm ơn bạn đã đánh giá.');
       if (content === null) return;
       await api.respondReview(reviewId, { content });
       await loadPrivate();
       if (isAdmin) await loadAdmin();
-      setNotice('Da phan hoi review.');
+      setNotice('Đã phản hồi đánh giá.');
     },
     [isAdmin, loadAdmin, loadPrivate]
   );
@@ -1279,7 +1281,7 @@ const App = () => {
       await api.updateReviewVisibility(review._id, { isVisible: !review.isVisible });
       await loadPrivate();
       if (routeProductId) await loadProductDetail(routeProductId);
-      setNotice('Da cap nhat hien thi review.');
+      setNotice('Đã cập nhật hiển thị đánh giá.');
     },
     [loadPrivate, loadProductDetail, routeProductId]
   );
@@ -1300,11 +1302,11 @@ const App = () => {
       const hasExistingImages =
         Array.isArray(productForm.images) && productForm.images.filter(Boolean).length > 0;
       if (!productForm.categoryId) {
-        failProduct('Vui long chon danh muc cho listing.');
+        failProduct('Vui lòng chọn danh mục cho tin đăng.');
         return;
       }
       if (!title || title.length < 5) {
-        failProduct('Tieu de listing can it nhat 5 ky tu.');
+        failProduct('Tiêu đề tin đăng cần ít nhất 5 ký tự.');
         return;
       }
       if (!description || description.length < 10) {
@@ -1320,19 +1322,19 @@ const App = () => {
         return;
       }
       if (!productForm.condition) {
-        failProduct('Vui long chon tinh trang san pham.');
+        failProduct('Vui lòng chọn tình trạng sản phẩm.');
         return;
       }
       if (!region || !city) {
-        failProduct('Vui long nhap day du khu vuc va tinh/thanh pho.');
+        failProduct('Vui lòng nhập đầy đủ khu vực và tỉnh/thành phố.');
         return;
       }
       if (!editingProductId && !productFiles.length) {
-        failProduct('Listing moi can it nhat 1 anh.');
+        failProduct('Tin đăng mới cần ít nhất 1 ảnh.');
         return;
       }
       if (editingProductId && !productFiles.length && !hasExistingImages) {
-        failProduct('Listing can co it nhat 1 anh.');
+        failProduct('Tin đăng cần có ít nhất 1 ảnh.');
         return;
       }
       const payload = {
@@ -1367,7 +1369,7 @@ const App = () => {
       resetProductForm();
       const target = adminRoute ? '/admin/products' : '/sell/products';
       navigateTo(target);
-      setNotice(editingProductId ? 'Da cap nhat listing.' : 'Da tao listing moi.');
+      setNotice(editingProductId ? 'Đã cập nhật tin đăng.' : 'Đã tạo tin đăng mới.');
     },
     [adminRoute, appendMedia, editingProductId, productFiles, productForm, refreshAll, resetProductForm]
   );
@@ -1380,7 +1382,7 @@ const App = () => {
         navigateTo('/');
       }
       await refreshAll();
-      setNotice('Da xoa listing.');
+      setNotice('Đã xóa tin đăng.');
     },
     [refreshAll, selectedProduct]
   );
@@ -1424,10 +1426,10 @@ const App = () => {
       };
       if (auctionForm.id) {
         await api.updateAuction(auctionForm.id, payload);
-        setNotice('Da cap nhat auction.');
+        setNotice('Đã cập nhật phiên đấu giá.');
       } else {
         await api.createAuction(payload);
-        setNotice('Da tao auction moi.');
+        setNotice('Đã tạo phiên đấu giá mới.');
       }
       resetAuctionForm();
       await refreshAll();
@@ -1448,7 +1450,7 @@ const App = () => {
       if (selectedAuctionDetail?.auction?._id === auctionId) {
         await loadAuctionDetail(auctionId);
       }
-      setNotice('Da dong auction.');
+      setNotice('Đã đóng phiên đấu giá.');
     },
     [loadAuctionDetail, refreshAll, selectedAuctionDetail]
   );
@@ -1460,7 +1462,7 @@ const App = () => {
       if (selectedAuctionDetail?.auction?._id === auctionId) {
         await loadAuctionDetail(auctionId);
       }
-      setNotice('Da mo dau gia sang trang thai live.');
+      setNotice('Đã mở đấu giá sang trạng thái live.');
     },
     [loadAuctionDetail, refreshAll, selectedAuctionDetail]
   );
@@ -1473,7 +1475,7 @@ const App = () => {
         navigateTo('/sell/auctions');
       }
       await refreshAll();
-      setNotice('Da xoa auction.');
+      setNotice('Đã xóa phiên đấu giá.');
     },
     [refreshAll, routeAuctionId]
   );
@@ -1503,7 +1505,7 @@ const App = () => {
       resetAddressForm();
       navigateTo('/account');
       focusAddressSection();
-      setNotice('Ban chua co dia chi giao hang. Hay luu dia chi, he thong se tao don ngay sau do.');
+      setNotice('Bạn chưa có địa chỉ giao hàng. Hãy lưu địa chỉ, hệ thống sẽ tạo đơn ngay sau đó.');
       return;
     }
 
@@ -1567,7 +1569,7 @@ const App = () => {
       if (orderId) {
         navigateTo(`/orders/${orderId}`);
       }
-      setNotice('Da mua dut phien dau gia bang vi.');
+      setNotice('Đã mua đứt phiên đấu giá bằng ví.');
     },
     [loadAuctionDetail, pathname, refreshAll]
   );
@@ -1581,10 +1583,10 @@ const App = () => {
       const minimumBid = Number(bidDialog.currentBid || 0) + Number(bidDialog.bidStep || 10000);
 
       if (!amount || Number.isNaN(amount)) {
-        throw new Error('Vui long nhap gia dat hop le.');
+        throw new Error('Vui lòng nhập giá đặt hợp lệ.');
       }
       if (amount < minimumBid) {
-        throw new Error(`Gia dat phai tu ${minimumBid.toLocaleString('vi-VN')} VND tro len.`);
+        throw new Error(`Giá đặt phải từ ${minimumBid.toLocaleString('vi-VN')} VND trở lên.`);
       }
 
       await api.placeBid(bidDialog.auctionId, amount);
@@ -1593,7 +1595,7 @@ const App = () => {
       if (String(pathname).startsWith('/auctions/')) {
         await loadAuctionDetail(bidDialog.auctionId);
       }
-      setNotice('Da gui luot dat gia thanh cong.');
+      setNotice('Đã gửi lượt đặt giá thành công.');
     },
     [bidDialog, closeBidDialog, loadAuctionDetail, pathname, refreshAll]
   );
@@ -1602,18 +1604,18 @@ const App = () => {
     if (!selectedProduct?._id || !user?._id) return;
     const sellerId = selectedProduct.seller?._id || selectedProduct.seller;
     if (String(sellerId) === String(user._id)) {
-      setNotice('Ban dang xem listing cua chinh minh.');
+      setNotice('Bạn đang xem tin đăng của chính mình.');
       return;
     }
     const payload = await api.createConversation({
       productId: selectedProduct._id,
       otherUserId: sellerId,
-      subject: `Hoi ve ${selectedProduct.title}`,
-      initialMessage: 'Xin chao, san pham nay con khong?',
+      subject: `Hỏi về ${selectedProduct.title}`,
+      initialMessage: 'Xin chào, sản phẩm này còn không?',
     });
     mergeConversation(payload.data);
     navigateTo(`/messages/${payload.data._id}`);
-    setNotice('Da mo conversation voi nguoi ban.');
+    setNotice('Đã mở cuộc trò chuyện với người bán.');
   }, [mergeConversation, selectedProduct, user]);
 
   const sendChat = useCallback(
@@ -1654,7 +1656,7 @@ const App = () => {
       const content = window.prompt('Sửa nội dung tin nhắn', message.content || '');
       if (content === null) return;
       await api.updateMessage(activeConversationId, message._id, { content });
-      setNotice('Da sua message.');
+      setNotice('Đã sửa tin nhắn.');
     },
     [activeConversationId]
   );
@@ -1662,15 +1664,32 @@ const App = () => {
   const handleDeleteMessage = useCallback(
     async (message) => {
       await api.deleteMessage(activeConversationId, message._id);
-      setNotice('Da thu hoi message.');
+      setNotice('Đã thu hồi tin nhắn.');
     },
     [activeConversationId]
   );
 
+  const handleCategoryImageSelect = useCallback((file) => {
+    setCategoryImageFile(file || null);
+    setCategoryImagePreview((current) => {
+      if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
+      return file ? URL.createObjectURL(file) : '';
+    });
+  }, []);
+
+  const handleClearCategoryImage = useCallback(() => {
+    setCategoryImageFile(null);
+    setCategoryImagePreview((current) => {
+      if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
+      return '';
+    });
+    setCategoryForm((current) => ({ ...current, image: '' }));
+  }, []);
+
   const handleDeleteAttachment = useCallback(
     async (message, mediaId) => {
       await api.deleteMessageAttachment(activeConversationId, message._id, mediaId);
-      setNotice('Da xoa attachment khoi message.');
+      setNotice('Đã xóa tệp đính kèm khỏi tin nhắn.');
     },
     [activeConversationId]
   );
@@ -1681,7 +1700,7 @@ const App = () => {
       const name = `${categoryForm.name || ''}`.trim();
       const slug = toSlug(categoryForm.slug || categoryForm.name);
       if (!name) {
-        setNotice('Vui long nhap ten danh muc.');
+        setNotice('Vui lòng nhập tên danh mục.');
         return;
       }
       if (!slug) {
@@ -1692,31 +1711,47 @@ const App = () => {
         ...categoryForm,
         name,
         slug,
-        icon: `${categoryForm.icon || ''}`.trim(),
+        image: `${categoryForm.image || ''}`.trim(),
+        icon: '',
         parentCategory: categoryForm.parentCategory || '',
         sortOrder: toNumber(categoryForm.sortOrder) || 0,
         isActive: categoryForm.isActive !== false,
       };
+      let savedCategory = null;
       if (categoryEditId) {
-        await api.updateCategory(categoryEditId, payload);
-        setNotice('Da cap nhat category.');
+        const response = await api.updateCategory(categoryEditId, payload);
+        savedCategory = response?.data || null;
+        setNotice('Đã cập nhật danh mục.');
       } else {
-        await api.createCategory(payload);
-        setNotice('Da tao category.');
+        const response = await api.createCategory(payload);
+        savedCategory = response?.data || null;
+        setNotice('Đã tạo danh mục.');
+      }
+      if (categoryImageFile && savedCategory?._id) {
+        const formData = new FormData();
+        formData.append('ownerType', 'category');
+        formData.append('ownerId', savedCategory._id);
+        formData.append('file', categoryImageFile);
+        await api.uploadSingle(formData);
       }
       resetCategoryForm();
       await refreshAll();
     },
-    [categoryEditId, categoryForm, refreshAll, resetCategoryForm]
+    [categoryEditId, categoryForm, categoryImageFile, refreshAll, resetCategoryForm]
   );
 
   const handleEditCategory = useCallback((category) => {
     setCategoryEditId(category._id);
+    setCategoryImageFile(null);
+    setCategoryImagePreview((current) => {
+      if (current?.startsWith('blob:')) URL.revokeObjectURL(current);
+      return '';
+    });
     setCategoryForm({
       name: category.name || '',
       slug: category.slug || '',
       description: category.description || '',
-      icon: category.icon || '',
+      image: category.image || '',
       parentCategory: category.parentCategory?._id || category.parentCategory || '',
       sortOrder: String(category.sortOrder || 0),
       isActive: category.isActive !== false,
@@ -1730,7 +1765,7 @@ const App = () => {
       await api.deleteCategory(categoryId);
       if (categoryEditId === categoryId) resetCategoryForm();
       await refreshAll();
-      setNotice('Da xoa category.');
+      setNotice('Đã xóa danh mục.');
     },
     [categoryEditId, refreshAll, resetCategoryForm]
   );
@@ -1739,7 +1774,7 @@ const App = () => {
     async (member, patch) => {
       await api.updateUser(member._id, patch);
       await loadAdmin();
-      setNotice('Da cap nhat user.');
+      setNotice('Đã cập nhật người dùng.');
     },
     [loadAdmin]
   );
@@ -1748,7 +1783,7 @@ const App = () => {
     async (userId) => {
       await api.deleteUser(userId);
       await loadAdmin();
-      setNotice('Da xoa user.');
+      setNotice('Đã xóa người dùng.');
     },
     [loadAdmin]
   );
@@ -1757,7 +1792,7 @@ const App = () => {
     async (productId, status) => {
       await api.updateProduct(productId, { status });
       await refreshAll();
-      setNotice(`Da chuyen trang thai san pham sang ${status}.`);
+      setNotice(`Đã chuyển trạng thái sản phẩm sang ${status}.`);
     },
     [refreshAll]
   );
@@ -1770,7 +1805,7 @@ const App = () => {
         maxPages: Number(importForm.maxPages || 1),
       });
       await refreshAll();
-      setNotice('Da chay import Chotot.');
+      setNotice('Đã chạy import Chợ Tốt.');
     },
     [importForm, refreshAll]
   );
@@ -1793,7 +1828,7 @@ const App = () => {
           mimeType: file.type,
         })
       );
-      setNotice('Da tai anh bang base64.');
+      setNotice('Đã tải ảnh bằng base64.');
     },
     [appendMedia, uploadState]
   );
@@ -1806,7 +1841,7 @@ const App = () => {
       formData.append('ownerId', uploadState.ownerId);
       formData.append('file', file);
       appendMedia(await api.uploadSingle(formData));
-      setNotice('Da tai 1 anh bang multipart/form-data.');
+      setNotice('Đã tải 1 ảnh bằng multipart/form-data.');
     },
     [appendMedia, uploadState]
   );
@@ -1819,7 +1854,7 @@ const App = () => {
       formData.append('ownerId', uploadState.ownerId);
       files.forEach((file) => formData.append('files', file));
       appendMedia(await api.uploadMany(formData));
-      setNotice('Da tai nhieu anh cung luc.');
+      setNotice('Đã tải nhiều ảnh cùng lúc.');
     },
     [appendMedia, uploadState]
   );
@@ -1832,13 +1867,13 @@ const App = () => {
         url: uploadState.remoteUrl,
       })
     );
-    setNotice('Da dang ky anh tu remote URL.');
+    setNotice('Đã đăng ký ảnh từ remote URL.');
   }, [appendMedia, uploadState]);
 
   const handleDeleteMedia = useCallback(async (mediaId) => {
     await api.deleteMedia(mediaId);
     setMediaLibrary((current) => current.filter((item) => item._id !== mediaId));
-    setNotice('Da xoa media.');
+    setNotice('Đã xóa media.');
   }, []);
 
   const commonCatalogProps = {
@@ -1976,7 +2011,10 @@ const App = () => {
     categoryForm,
     setCategoryForm,
     categoryEditId,
+    categoryImagePreview,
     onSaveCategory: (event) => run(() => handleSaveCategory(event)),
+    onCategoryImageSelect: handleCategoryImageSelect,
+    onClearCategoryImage: handleClearCategoryImage,
     onEditCategory: handleEditCategory,
     onResetCategoryForm: resetCategoryForm,
     onDeleteCategory: (categoryId) => run(() => handleDeleteCategory(categoryId)),
@@ -2332,7 +2370,7 @@ const App = () => {
         title: 'Quản trị tạo sản phẩm',
         isAllowed: isAdmin,
         requiredRoles: ['admin'],
-        forbiddenMessage: 'Chỉ admin mới được tạo hoặc sửa listing từ workspace admin.',
+        forbiddenMessage: 'Chỉ admin mới được tạo hoặc sửa tin đăng từ workspace admin.',
       });
     }
     if (pathname === '/admin/orders') {
@@ -2340,7 +2378,7 @@ const App = () => {
         title: 'Quản trị vận hành',
         isAllowed: isAdmin,
         requiredRoles: ['admin'],
-        forbiddenMessage: 'Chỉ admin mới được truy cập vận hành order và escrow.',
+        forbiddenMessage: 'Chỉ admin mới được truy cập vận hành đơn hàng và ký quỹ.',
       });
     }
     if (pathname === '/admin/wallets') {
@@ -2386,18 +2424,8 @@ const App = () => {
             </AppLink>
             <span className="muted">Mua bán đồ cũ và chat trực tiếp với người bán</span>
           </div>
-          {headerSearchVisible ? (
-            <form className="site-search" onSubmit={handleHeaderSearch}>
-              <input
-                value={filters.q}
-                onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))}
-                placeholder="Tìm điện thoại, xe, đồ gia dụng..."
-              />
-              <button type="submit" className="primary-btn">Tìm</button>
-            </form>
-          ) : null}
-            <div className="site-header__right">
-              <nav className="site-nav">
+          <div className="site-header__right">
+            <nav className="site-nav">
               {mainNav
                 .filter((item) => !item.requiresAuth || user)
                 .filter((item) => !item.requiresAdmin || isAdmin)
@@ -2676,5 +2704,6 @@ const App = () => {
 };
 
 export default App;
+
 
 

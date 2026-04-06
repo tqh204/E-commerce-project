@@ -55,8 +55,11 @@ const AdminView = ({
   categoryForm,
   setCategoryForm,
   categoryEditId,
+  categoryImagePreview = '',
   categoryCreateMode = false,
   onSaveCategory,
+  onCategoryImageSelect,
+  onClearCategoryImage,
   onEditCategory,
   onResetCategoryForm,
   onDeleteCategory,
@@ -120,6 +123,7 @@ const AdminView = ({
       return matchesStatus && (!query || haystack.includes(query));
     });
   }, [productQuery, productStatusFilter, products]);
+  const categoryPreviewSrc = categoryImagePreview || categoryForm?.image || '';
 
   if (!isAdmin) {
     return (
@@ -254,7 +258,7 @@ const AdminView = ({
       {showCategories ? (
         <SectionCard
           title={categoryEditId ? 'Sửa danh mục' : categoryCreateMode ? 'Tạo danh mục' : 'Quản lý danh mục'}
-          subtitle="Taxonomy của marketplace"
+          subtitle="Nhóm sản phẩm hiển thị trên giao diện trang chủ"
           className="wide"
         >
           <div className="workspace-form">
@@ -284,13 +288,31 @@ const AdminView = ({
                   placeholder="Thứ tự hiển thị"
                 />
               </div>
-              <input
-                value={categoryForm.icon || ''}
-                onChange={(event) =>
-                  setCategoryForm((current) => ({ ...current, icon: event.target.value }))
-                }
-                placeholder="Icon class / emoji / icon URL"
-              />
+              <div className="category-upload-card">
+                <div className="category-upload-card__copy">
+                  <strong>Ảnh danh mục</strong>
+                  <p className="muted">
+                    Chọn ảnh trực tiếp từ máy để hiển thị ở phần danh mục quản trị và ngoài trang chủ.
+                  </p>
+                </div>
+                <div className="category-upload-card__actions">
+                  <label className="category-upload-input" htmlFor="category-image-input">
+                    <span>Chọn ảnh từ máy</span>
+                    <input
+                      key={categoryPreviewSrc || categoryEditId || 'category-image-empty'}
+                      id="category-image-input"
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => onCategoryImageSelect?.(event.target.files?.[0] || null)}
+                    />
+                  </label>
+                  {categoryPreviewSrc ? (
+                    <button type="button" className="ghost-btn" onClick={onClearCategoryImage}>
+                      Xóa ảnh
+                    </button>
+                  ) : null}
+                </div>
+              </div>
               <textarea
                 value={categoryForm.description}
                 onChange={(event) =>
@@ -322,11 +344,20 @@ const AdminView = ({
             <aside className="workspace-form__aside">
               <div className="workspace-note">
                 <strong>Xem trước danh mục</strong>
+                {categoryPreviewSrc ? (
+                  <div className="category-preview-media">
+                    <img src={categoryPreviewSrc} alt={categoryForm.name || 'Danh mục'} />
+                  </div>
+                ) : (
+                  <div className="category-preview-placeholder">
+                    <span>Chưa có ảnh danh mục</span>
+                  </div>
+                )}
                 <p className="muted">{categoryForm.name || 'Tên danh mục sẽ hiển thị ở đây.'}</p>
                 <div className="tag-row">
                   <small>{categoryForm.slug || 'slug-tu-dong'}</small>
-                  <small>sort {categoryForm.sortOrder || 0}</small>
-                  <small>{categoryForm.isActive !== false ? 'active' : 'inactive'}</small>
+                  <small>thứ tự {categoryForm.sortOrder || 0}</small>
+                  <small>{categoryForm.isActive !== false ? 'đang hiển thị' : 'đang ẩn'}</small>
                 </div>
               </div>
             </aside>
@@ -344,13 +375,18 @@ const AdminView = ({
             {filteredCategories.map((category) => (
               <article key={category._id} className="resource-item admin-item-card">
                 <div>
+                  {category.image ? (
+                    <div className="category-card-media">
+                      <img src={category.image} alt={category.name} />
+                    </div>
+                  ) : null}
                   <div className="tag-row">
                     <strong>{category.name}</strong>
-                    <small>{category.isActive !== false ? 'active' : 'inactive'}</small>
+                    <small>{category.isActive !== false ? 'đang hiển thị' : 'đang ẩn'}</small>
                     <small>{category.productCount || 0} sản phẩm</small>
                   </div>
                   <p>{category.description || 'Chưa có mô tả danh mục.'}</p>
-                  <small>/{category.slug} | sort {category.sortOrder || 0}</small>
+                  <small>/{category.slug} | thứ tự {category.sortOrder || 0}</small>
                 </div>
                 <div className="resource-item__meta">
                   <div className="mini-actions wrap">
@@ -403,7 +439,7 @@ const AdminView = ({
             </div>
           </div>
 
-          <div className="resource-list admin-resource-list">
+          <div className="resource-list admin-resource-list admin-resource-list--products">
             {filteredProducts.map((item) => (
               <article key={item._id} className="resource-item admin-item-card admin-product-card">
                 <div className="admin-product-card__content">

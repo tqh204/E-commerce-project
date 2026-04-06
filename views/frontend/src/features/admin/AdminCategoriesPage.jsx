@@ -15,12 +15,12 @@ const AdminCategoriesPage = (props) => {
           <p className="eyebrow">Quản trị danh mục</p>
           <h2>
             {props.createMode
-              ? 'Tạo danh mục trong form riêng biệt.'
-              : 'Tạo và quản lý danh mục riêng biệt với form schema đầy đủ.'}
+              ? 'Tạo danh mục trong form riêng gọn gàng hơn.'
+              : 'Tạo và quản lý danh mục với form gọn, rõ và có ảnh hiển thị trực tiếp.'}
           </h2>
           <p className="muted">
-            Danh mục gồm name, slug, parent_id, icon và is_active. Đây là khu riêng cho
-            taxonomy, tách khỏi form tạo listing.
+            Danh mục gồm tên, slug, mô tả, thứ tự hiển thị và ảnh tải từ máy. Ảnh danh mục sau khi lưu
+            sẽ được cập nhật luôn ở phần danh mục ngoài trang chủ.
           </p>
         </div>
         <div className="tag-row">

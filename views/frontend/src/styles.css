@@ -52,9 +52,24 @@ img { max-width: 100%; display: block; }
 .notification-item p { margin: 6px 0 0; color: var(--muted); }
 .notification-item small { color: var(--muted); }
 .notification-empty { text-align: left; padding: 8px; }
-.site-search { flex: 1; display: flex; gap: 6px; align-items: center; max-width: 300px; }
-.site-search input { min-width: 140px; }
-.site-search input { min-width: 0; }
+.site-search {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: 420px;
+}
+.site-search input {
+  min-width: 0;
+  flex: 1;
+  padding: 14px 18px;
+  border-radius: 999px;
+}
+.site-search .primary-btn {
+  min-width: 72px;
+  padding: 14px 20px;
+  border-radius: 999px;
+}
 .site-footer { border-top: 1px solid var(--line); background: rgba(255,255,255,0.72); font-size: 14px; color: var(--muted); }
 .auth-single { max-width: 520px; }
 .eyebrow { text-transform: uppercase; letter-spacing: 0.18em; font-size: 11px; opacity: 0.72; margin: 0 0 10px; }
@@ -231,11 +246,12 @@ button:hover, .upload-pill:hover, .resource-card:hover, .conversation-card:hover
 .admin-stat-card { border-radius: 18px; padding: 16px; background: rgba(255,255,255,0.92); border: 1px solid rgba(18,32,34,0.08); display: grid; gap: 6px; }
 .admin-stat-card strong { font-size: 28px; }
 .admin-resource-list { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.admin-resource-list--products { grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); }
 .admin-item-card { border-radius: 18px; background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.9)); }
 .admin-column-card { padding: 14px; border-radius: 18px; background: var(--bg-soft); border: 1px solid rgba(18,32,34,0.08); }
 .admin-toolbar { margin-bottom: 4px; }
 .route-pill--highlight { background: linear-gradient(135deg, rgba(15,23,42,0.98), rgba(15,118,110,0.92)); color: white; border-color: transparent; }
-.admin-product-card { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 18px; align-items: start; }
+.admin-product-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, 250px); gap: 18px; align-items: start; }
 .admin-product-card__content { display: grid; gap: 10px; min-width: 0; }
 .admin-product-card__head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .admin-product-card__head strong { display: block; font-size: 24px; line-height: 1.15; }
@@ -243,7 +259,8 @@ button:hover, .upload-pill:hover, .resource-card:hover, .conversation-card:hover
 .admin-product-card__meta { display: grid; gap: 6px; color: var(--muted); }
 .admin-product-card__tags { gap: 8px; }
 .admin-product-card__actions { width: 100%; justify-items: stretch; }
-.admin-status-actions { justify-content: flex-end; }
+.admin-product-card__actions .route-pill { width: 100%; justify-content: center; }
+.admin-status-actions { justify-content: flex-start; }
 .admin-status-btn { padding: 9px 12px; border-radius: 999px; background: rgba(255,255,255,0.94); }
 .admin-status-btn.active { background: rgba(15,118,110,0.12); border-color: rgba(15,118,110,0.25); color: #115e59; }
 .admin-delete-btn { background: rgba(255,247,237,0.95); border-color: rgba(249,115,22,0.24); }
@@ -290,6 +307,76 @@ button:hover, .upload-pill:hover, .resource-card:hover, .conversation-card:hover
 .workspace-form { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.8fr); gap: 18px; align-items: start; }
 .workspace-form__aside { display: grid; gap: 14px; position: sticky; top: 110px; }
 .workspace-note { border-radius: 18px; background: rgba(255,255,255,0.9); border: 1px solid rgba(18,32,34,0.08); padding: 16px; display: grid; gap: 10px; }
+.category-upload-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(18,32,34,0.08);
+  background: linear-gradient(135deg, rgba(240,253,250,0.74), rgba(255,255,255,0.96));
+}
+.category-upload-card__copy {
+  display: grid;
+  gap: 6px;
+}
+.category-upload-card__copy strong {
+  font-size: 18px;
+}
+.category-upload-card__copy p {
+  margin: 0;
+}
+.category-upload-card__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.category-upload-input {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px dashed rgba(15,118,110,0.28);
+  background: rgba(255,255,255,0.95);
+  color: #0f766e;
+  font-weight: 700;
+  cursor: pointer;
+}
+.category-upload-input input[type="file"] {
+  display: none;
+}
+.category-preview-media, .category-card-media {
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(18,32,34,0.08);
+  background: rgba(226,232,240,0.7);
+}
+.category-preview-media { aspect-ratio: 16 / 9; }
+.category-preview-placeholder {
+  min-height: 180px;
+  border-radius: 16px;
+  border: 1px dashed rgba(18,32,34,0.14);
+  background: linear-gradient(135deg, rgba(248,250,252,0.96), rgba(241,245,249,0.92));
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  text-align: center;
+  padding: 16px;
+}
+.category-card-media {
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 12px;
+}
+.category-preview-media img, .category-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 .compact-note { min-height: 100%; place-content: center; text-align: center; }
 .profile-card { display: grid; gap: 16px; }
 .profile-header { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }

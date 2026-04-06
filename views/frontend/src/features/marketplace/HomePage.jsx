@@ -33,7 +33,7 @@ const HomeListingSection = ({ title, subtitle, products = [], onSelectProduct })
           onClick={() => onSelectProduct(product._id)}
         >
           <div className="resource-card__image listing-card__image">
-            {product.thumbnailImage ? <img src={product.thumbnailImage} alt={product.title} /> : <span>No image</span>}
+            {product.thumbnailImage ? <img src={product.thumbnailImage} alt={product.title} /> : <span>Không có ảnh</span>}
           </div>
           <div className="listing-card__body">
             <strong className="listing-card__title">{product.title}</strong>
@@ -82,10 +82,10 @@ const HomePage = (props) => {
         <div className="home-hero__grid">
           <div className="home-hero__copy">
             <span className="home-hero__eyebrow">ChoMarket</span>
-            <h2>Giao dich nhanh, an toan va day cam hung cho moi mon do.</h2>
+            <h2>Giao dịch nhanh, an toàn và đầy cảm hứng cho mọi món đồ.</h2>
             <p className="muted">
-              Kham pha danh muc moi, xem dau gia dang mo va trao doi truc tiep voi nguoi ban.
-              Moi thu deu co san ngay tren mot marketplace duy nhat.
+              Khám phá danh mục mới, xem đấu giá đang mở và trao đổi trực tiếp với người bán.
+              Mọi thứ đều có sẵn ngay trên một marketplace duy nhất.
             </p>
             <div className="home-hero__actions">
               <button
@@ -93,36 +93,36 @@ const HomePage = (props) => {
                 className="primary-btn"
                 onClick={() => props.onApplyFilters?.({ ...(props.filters || {}), categoryId: '' })}
               >
-                Kham pha ngay
+                Khám phá ngay
               </button>
               <button
                 type="button"
                 className="ghost-btn"
                 onClick={() => props.onApplyFilters?.({ ...(props.filters || {}), saleType: 'auction' })}
               >
-                Xem dau gia
+                Xem đấu giá
               </button>
             </div>
             <div className="home-hero__metrics">
               <div>
                 <strong>{products.length}</strong>
-                <span className="muted">San pham dang hien thi</span>
+                <span className="muted">Sản phẩm đang hiển thị</span>
               </div>
               <div>
                 <strong>{(props.categories || []).length}</strong>
-                <span className="muted">Danh muc dang mo</span>
+                <span className="muted">Danh mục đang mở</span>
               </div>
               <div>
                 <strong>{featuredAuctions.length || 0}</strong>
-                <span className="muted">Phien dau gia</span>
+                <span className="muted">Phiên đấu giá</span>
               </div>
             </div>
           </div>
 
           <div className="home-hero__card">
             <div className="home-hero__card-head">
-              <span className="home-hero__pill">Goi y hom nay</span>
-              <span className="muted">Cap nhat moi nhat</span>
+              <span className="home-hero__pill">Gợi ý hôm nay</span>
+              <span className="muted">Cập nhật mới nhất</span>
             </div>
             {heroProduct ? (
               <>
@@ -149,13 +149,13 @@ const HomePage = (props) => {
                   className="route-pill route-pill--highlight"
                   onClick={() => props.onSelectProduct?.(heroProduct._id)}
                 >
-                  Xem chi tiet
+                  Xem chi tiết
                 </button>
               </>
             ) : (
               <div className="home-hero__empty">
-                <strong>Chua co san pham</strong>
-                <span className="muted">Hay them san pham de hien thi goi y.</span>
+                <strong>Chưa có sản phẩm</strong>
+                <span className="muted">Hãy thêm sản phẩm để hiển thị gợi ý.</span>
               </div>
             )}
           </div>
@@ -165,16 +165,16 @@ const HomePage = (props) => {
       <section className="home-perks section-card wide">
         <div className="home-perks__grid">
           <article className="home-perk-card">
-            <strong>Da kenh giao dich</strong>
-            <p className="muted">Mua ngay, dau gia hoac thuong luong truc tiep qua chat.</p>
+            <strong>Đa kênh giao dịch</strong>
+            <p className="muted">Mua ngay, đấu giá hoặc thương lượng trực tiếp qua chat.</p>
           </article>
           <article className="home-perk-card">
-            <strong>Giu tien an toan</strong>
-            <p className="muted">Escrow giup dam bao nguoi mua va nguoi ban deu yen tam.</p>
+            <strong>Giữ tiền an toàn</strong>
+            <p className="muted">Escrow giúp đảm bảo người mua và người bán đều yên tâm.</p>
           </article>
           <article className="home-perk-card">
-            <strong>De xuat thong minh</strong>
-            <p className="muted">San pham goi y dua tren danh muc ban quan tam.</p>
+            <strong>Đề xuất thông minh</strong>
+            <p className="muted">Sản phẩm gợi ý dựa trên danh mục bạn quan tâm.</p>
           </article>
         </div>
       </section>
