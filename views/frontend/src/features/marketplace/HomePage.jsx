@@ -57,6 +57,7 @@ const HomePage = (props) => {
   const newestProducts = [...products].slice(0, 4);
   const nearbyProducts = products.filter((item) => item.province || item.district).slice(0, 4);
   const featuredAuctions = products.filter((item) => item.saleType === 'auction').slice(0, 4);
+  const heroProduct = products.find((item) => item.thumbnailImage) || products[0];
   const suggestedProducts = (() => {
     const preferredCategoryId =
       props.filters?.categoryId ||
@@ -77,6 +78,107 @@ const HomePage = (props) => {
 
   return (
     <>
+      <section className="home-hero section-card wide">
+        <div className="home-hero__grid">
+          <div className="home-hero__copy">
+            <span className="home-hero__eyebrow">ChoMarket</span>
+            <h2>Giao dich nhanh, an toan va day cam hung cho moi mon do.</h2>
+            <p className="muted">
+              Kham pha danh muc moi, xem dau gia dang mo va trao doi truc tiep voi nguoi ban.
+              Moi thu deu co san ngay tren mot marketplace duy nhat.
+            </p>
+            <div className="home-hero__actions">
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => props.onApplyFilters?.({ ...(props.filters || {}), categoryId: '' })}
+              >
+                Kham pha ngay
+              </button>
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => props.onApplyFilters?.({ ...(props.filters || {}), saleType: 'auction' })}
+              >
+                Xem dau gia
+              </button>
+            </div>
+            <div className="home-hero__metrics">
+              <div>
+                <strong>{products.length}</strong>
+                <span className="muted">San pham dang hien thi</span>
+              </div>
+              <div>
+                <strong>{(props.categories || []).length}</strong>
+                <span className="muted">Danh muc dang mo</span>
+              </div>
+              <div>
+                <strong>{featuredAuctions.length || 0}</strong>
+                <span className="muted">Phien dau gia</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="home-hero__card">
+            <div className="home-hero__card-head">
+              <span className="home-hero__pill">Goi y hom nay</span>
+              <span className="muted">Cap nhat moi nhat</span>
+            </div>
+            {heroProduct ? (
+              <>
+                <div className="home-hero__media">
+                  {heroProduct.thumbnailImage ? (
+                    <img src={heroProduct.thumbnailImage} alt={heroProduct.title} />
+                  ) : (
+                    <span>{heroProduct.title?.slice(0, 2).toUpperCase() || 'SP'}</span>
+                  )}
+                </div>
+                <div className="home-hero__card-body">
+                  <strong>{heroProduct.title}</strong>
+                  <span className="price">
+                    {formatPrice(
+                      heroProduct.saleType === 'auction'
+                        ? (heroProduct.currentBid || heroProduct.startingBid || heroProduct.price || 0)
+                        : (heroProduct.price || 0)
+                    )} VND
+                  </span>
+                  <span className="muted">{joinLocation(heroProduct.ward, heroProduct.district, heroProduct.province)}</span>
+                </div>
+                <button
+                  type="button"
+                  className="route-pill route-pill--highlight"
+                  onClick={() => props.onSelectProduct?.(heroProduct._id)}
+                >
+                  Xem chi tiet
+                </button>
+              </>
+            ) : (
+              <div className="home-hero__empty">
+                <strong>Chua co san pham</strong>
+                <span className="muted">Hay them san pham de hien thi goi y.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="home-perks section-card wide">
+        <div className="home-perks__grid">
+          <article className="home-perk-card">
+            <strong>Da kenh giao dich</strong>
+            <p className="muted">Mua ngay, dau gia hoac thuong luong truc tiep qua chat.</p>
+          </article>
+          <article className="home-perk-card">
+            <strong>Giu tien an toan</strong>
+            <p className="muted">Escrow giup dam bao nguoi mua va nguoi ban deu yen tam.</p>
+          </article>
+          <article className="home-perk-card">
+            <strong>De xuat thong minh</strong>
+            <p className="muted">San pham goi y dua tren danh muc ban quan tam.</p>
+          </article>
+        </div>
+      </section>
+
       <section className="category-spotlight section-card wide">
         <div className="category-spotlight__head">
           <div>
