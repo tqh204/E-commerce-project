@@ -42,6 +42,7 @@ import { useRealtimeChat } from '@frontend-utils/useRealtimeChat';
 
 const PASSWORD_RULE_TEXT =
   'Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.';
+const MAX_PRODUCT_UPLOAD_FILES = 5;
 const isStrongPassword = (value = '') =>
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(value);
 const USERNAME_RULE = /^[a-z0-9_-]{3,30}$/i;
@@ -1299,8 +1300,7 @@ const App = () => {
       const city = `${productForm.city || productForm.province || ''}`.trim();
       const price = toNumber(productForm.price);
       const inventory = toNumber(productForm.inventory);
-      const hasExistingImages =
-        Array.isArray(productForm.images) && productForm.images.filter(Boolean).length > 0;
+      const normalizedInventory = inventory === undefined ? 1 : inventory;
       if (!productForm.categoryId) {
         failProduct('Vui lòng chọn danh mục cho tin đăng.');
         return;
@@ -1317,7 +1317,7 @@ const App = () => {
         failProduct('Giá sản phẩm không hợp lệ.');
         return;
       }
-      if (inventory === undefined || inventory < 0) {
+      if (normalizedInventory < 0) {
         failProduct('Số lượng tồn kho không hợp lệ.');
         return;
       }
@@ -1325,16 +1325,8 @@ const App = () => {
         failProduct('Vui lòng chọn tình trạng sản phẩm.');
         return;
       }
-      if (!region || !city) {
-        failProduct('Vui lòng nhập đầy đủ khu vực và tỉnh/thành phố.');
-        return;
-      }
-      if (!editingProductId && !productFiles.length) {
-        failProduct('Tin đăng mới cần ít nhất 1 ảnh.');
-        return;
-      }
-      if (editingProductId && !productFiles.length && !hasExistingImages) {
-        failProduct('Tin đăng cần có ít nhất 1 ảnh.');
+      if (productFiles.length > MAX_PRODUCT_UPLOAD_FILES) {
+        failProduct(`Mỗi lần chỉ tải tối đa ${MAX_PRODUCT_UPLOAD_FILES} ảnh.`);
         return;
       }
       const payload = {
@@ -1343,7 +1335,7 @@ const App = () => {
         description,
         saleType: 'fixed_price',
         price,
-        inventory,
+        inventory: normalizedInventory,
         region,
         city,
         province: city,

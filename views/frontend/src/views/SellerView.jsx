@@ -180,7 +180,6 @@ const SellerView = ({
                   value={productForm.region}
                   onChange={(event) => setProductForm((current) => ({ ...current, region: event.target.value }))}
                   placeholder="Khu vực"
-                  required
                 />
                 <input
                   value={productForm.city}
@@ -192,7 +191,6 @@ const SellerView = ({
                     }))
                   }
                   placeholder="Tỉnh / Thành phố"
-                  required
                 />
 
                 <input
@@ -217,7 +215,8 @@ const SellerView = ({
               <label className="workspace-note upload-dropzone">
                 <strong>Ảnh sản phẩm</strong>
                 <small className="muted">
-                  Tải lên 1 hoặc nhiều ảnh. {existingImageCount ? `Đang có ${existingImageCount} ảnh cũ.` : ''}
+                  Ảnh là tuỳ chọn. Mỗi lần tải tối đa 5 ảnh.
+                  {existingImageCount ? ` Đang có ${existingImageCount} ảnh cũ.` : ''}
                 </small>
                 <input
                   type="file"
