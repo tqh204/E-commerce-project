@@ -1,20 +1,34 @@
-const { Category, Product } = require('../schemas');
-const {
-  asyncHandler,
-  buildPaginationMeta,
-  cleanObject,
-  parsePagination,
-  sendError,
-  sendSuccess,
-} = require('../lib/http');
+var schemas = require('../schemas');
+var httpLib = require('../lib/http');
 
-const canModerateProducts = (req) => (req.userRoles || []).includes('admin');
-const canViewOwnSellerListings = (req) =>
-  req.user &&
-  req.query.sellerId &&
-  String(req.query.sellerId) === String(req.user._id);
-const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const applyProductStatusTimestamps = (product) => {
+var Category = schemas.Category;
+var Product = schemas.Product;
+var buildPaginationMeta = httpLib.buildPaginationMeta;
+var cleanObject = httpLib.cleanObject;
+var parsePagination = httpLib.parsePagination;
+
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
+  }
+  return error;
+};
+
+var canModerateProducts = function(userRoles) {
+  return (userRoles || []).indexOf('admin') !== -1;
+};
+
+var canViewOwnSellerListings = function(actor, query) {
+  return actor.user && query && query.sellerId && String(query.sellerId) === String(actor.user._id);
+};
+
+var escapeRegex = function(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+var applyProductStatusTimestamps = function(product) {
   if (product.status === 'active') {
     product.publishedAt = product.publishedAt || new Date();
   } else if (product.status === 'draft' || product.status === 'pending') {
@@ -28,59 +42,74 @@ const applyProductStatusTimestamps = (product) => {
   }
 };
 
-const buildProductFilter = (req) => {
-  const filter = {};
-  if (req.query.categoryId) {
-    filter.category = req.query.categoryId;
+var buildProductFilter = function(query, actor) {
+  var filter = {};
+  var keyword;
+  var regex;
+
+  if (query.categoryId) {
+    filter.category = query.categoryId;
   }
-  if (req.query.sellerId) {
-    filter.seller = req.query.sellerId;
+  if (query.sellerId) {
+    filter.seller = query.sellerId;
   }
-  if (req.query.saleType) {
-    filter.saleType = req.query.saleType;
+  if (query.saleType) {
+    filter.saleType = query.saleType;
   }
-  if (req.query.source) {
-    filter.source = req.query.source;
+  if (query.source) {
+    filter.source = query.source;
   }
-  if (req.query.status) {
-    filter.status = req.query.status;
-  } else if (!canModerateProducts(req) && !canViewOwnSellerListings(req)) {
+  if (query.status) {
+    filter.status = query.status;
+  } else if (!canModerateProducts(actor.userRoles) && !canViewOwnSellerListings(actor, query)) {
     filter.status = 'active';
   }
-  if (req.query.minPrice || req.query.maxPrice) {
+  if (query.minPrice || query.maxPrice) {
     filter.price = {};
-    if (req.query.minPrice) filter.price.$gte = Number(req.query.minPrice);
-    if (req.query.maxPrice) filter.price.$lte = Number(req.query.maxPrice);
+    if (query.minPrice) {
+      filter.price.$gte = Number(query.minPrice);
+    }
+    if (query.maxPrice) {
+      filter.price.$lte = Number(query.maxPrice);
+    }
   }
-  if (req.query.q) {
-    const keyword = String(req.query.q || '').trim();
-    const regex = new RegExp(escapeRegex(keyword), 'i');
+  if (query.q) {
+    keyword = String(query.q || '').trim();
+    regex = new RegExp(escapeRegex(keyword), 'i');
     filter.$or = [{ title: regex }, { description: regex }, { tags: regex }];
   }
-  if (req.query.lng && req.query.lat) {
+  if (query.lng && query.lat) {
     filter.location = {
       $near: {
         $geometry: {
           type: 'Point',
-          coordinates: [Number(req.query.lng), Number(req.query.lat)],
+          coordinates: [Number(query.lng), Number(query.lat)],
         },
-        $maxDistance: Number(req.query.radius || 10) * 1000,
+        $maxDistance: Number(query.radius || 10) * 1000,
       },
     };
   }
   return filter;
 };
 
-exports.getAllProducts = asyncHandler(async (req, res) => {
-  const { page, limit, skip } = parsePagination(req.query);
-  const filter = buildProductFilter(req);
-  const sort = req.query.sort === 'price_asc'
-    ? { price: 1 }
-    : req.query.sort === 'price_desc'
-      ? { price: -1 }
-      : { createdAt: -1 };
+module.exports.getAllProducts = async function(query, actor) {
+  var pagination = parsePagination(query || {});
+  var page = pagination.page;
+  var limit = pagination.limit;
+  var skip = pagination.skip;
+  var filter = buildProductFilter(query || {}, actor || {});
+  var sort;
+  var results;
 
-  const [products, total] = await Promise.all([
+  if (query && query.sort === 'price_asc') {
+    sort = { price: 1 };
+  } else if (query && query.sort === 'price_desc') {
+    sort = { price: -1 };
+  } else {
+    sort = { createdAt: -1 };
+  }
+
+  results = await Promise.all([
     Product.find(filter)
       .populate('category', 'name slug')
       .populate('seller', 'username fullName avatarUrl ratingAvg')
@@ -90,153 +119,182 @@ exports.getAllProducts = asyncHandler(async (req, res) => {
     Product.countDocuments(filter),
   ]);
 
-  return sendSuccess(res, products, buildPaginationMeta(page, limit, total));
-});
+  return {
+    data: results[0],
+    meta: buildPaginationMeta(page, limit, results[1]),
+  };
+};
 
-exports.getProductById = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id)
+module.exports.getProductById = async function(productId, actor) {
+  var product = await Product.findById(productId)
     .populate('category', 'name slug')
     .populate('seller', 'username fullName avatarUrl ratingAvg');
+  var viewerId;
+  var sellerId;
+  var hasViewed;
 
   if (!product) {
-    return sendError(res, 'Product not found', 404);
+    return null;
   }
 
-  // Chỉ tăng lượt xem khi người dùng đã đăng nhập và không phải chính người bán
-  const viewerId = req.user ? String(req.user._id) : null;
-  const sellerId = String(product.seller?._id || product.seller);
-  const hasViewed = (product.viewedBy || []).some((userId) => String(userId) === viewerId);
+  viewerId = actor.user ? String(actor.user._id) : null;
+  sellerId = String((product.seller && product.seller._id) || product.seller);
+  hasViewed = (product.viewedBy || []).some(function(userId) {
+    return String(userId) === viewerId;
+  });
   if (viewerId && viewerId !== sellerId && !hasViewed) {
     await Product.updateOne(
-      { _id: product._id, viewedBy: { $ne: req.user._id } },
+      { _id: product._id, viewedBy: { $ne: actor.user._id } },
       {
         $inc: { viewsCount: 1 },
-        $addToSet: { viewedBy: req.user._id },
+        $addToSet: { viewedBy: actor.user._id },
       }
     );
     product.viewsCount += 1;
   }
-  return sendSuccess(res, product);
-});
 
-exports.createProduct = asyncHandler(async (req, res) => {
-  const category = await Category.findById(req.body.categoryId || req.body.category);
+  return product;
+};
+
+module.exports.createProduct = async function(body, actor) {
+  var category = await Category.findById(body.categoryId || body.category);
+  var city;
+  var region;
+  var isNegotiable;
+  var product;
+
   if (!category) {
-    return sendError(res, 'Category not found', 404);
+    throw createControllerError('Category not found', 404);
   }
 
-  const city = req.body.city || req.body.province || '';
-  const region = req.body.region || city;
+  city = body.city || body.province || '';
+  region = body.region || city;
+  isNegotiable = body.isNegotiable !== undefined && body.isNegotiable !== null
+    ? body.isNegotiable
+    : body.negotiable;
 
-  const product = new Product({
-    seller: req.user._id,
+  product = new Product({
+    seller: actor.user._id,
     category: category._id,
-    title: req.body.title || req.body.name,
-    description: req.body.description,
-    saleType: req.body.saleType,
-    price: req.body.price,
-    startingBid: req.body.startingBid,
-    currentBid: req.body.currentBid,
-    buyNowPrice: req.body.buyNowPrice,
-    bidStep: req.body.bidStep,
-    reservePrice: req.body.reservePrice,
-    condition: req.body.condition,
-    status: req.body.status || 'active',
-    inventory: req.body.inventory,
-    fulfillmentType: req.body.fulfillmentType,
-    isNegotiable: req.body.isNegotiable ?? req.body.negotiable,
-    images: req.body.images,
-    mediaIds: req.body.mediaIds,
-    addressText: req.body.addressText || req.body.address,
-    province: req.body.province || city,
-    city,
-    region,
-    district: req.body.district,
-    ward: req.body.ward,
-    location: req.body.location,
-    tags: req.body.tags,
-    source: req.body.source || 'manual',
-    sourceUrl: req.body.sourceUrl,
-    sourceExternalId: req.body.sourceExternalId,
+    title: body.title || body.name,
+    description: body.description,
+    saleType: body.saleType,
+    price: body.price,
+    startingBid: body.startingBid,
+    currentBid: body.currentBid,
+    buyNowPrice: body.buyNowPrice,
+    bidStep: body.bidStep,
+    reservePrice: body.reservePrice,
+    condition: body.condition,
+    status: body.status || 'active',
+    inventory: body.inventory,
+    fulfillmentType: body.fulfillmentType,
+    isNegotiable: isNegotiable,
+    images: body.images,
+    mediaIds: body.mediaIds,
+    addressText: body.addressText || body.address,
+    province: body.province || city,
+    city: city,
+    region: region,
+    district: body.district,
+    ward: body.ward,
+    location: body.location,
+    tags: body.tags,
+    source: body.source || 'manual',
+    sourceUrl: body.sourceUrl,
+    sourceExternalId: body.sourceExternalId,
   });
   applyProductStatusTimestamps(product);
   await product.save();
 
-  return sendSuccess(res, product, null, 201);
-});
+  return product;
+};
 
-exports.updateProduct = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id);
+module.exports.updateProduct = async function(productId, body, actor) {
+  var product = await Product.findById(productId);
+  var isOwner;
+  var isAdmin;
+  var category;
+  var city;
+  var region;
+  var isNegotiable;
+
   if (!product) {
-    return sendError(res, 'Product not found', 404);
+    return null;
   }
 
-  const isOwner = String(product.seller) === String(req.user._id);
-  const isAdmin = (req.userRoles || []).includes('admin');
+  isOwner = String(product.seller) === String(actor.user && actor.user._id);
+  isAdmin = (actor.userRoles || []).indexOf('admin') !== -1;
   if (!isOwner && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
+    throw createControllerError('Forbidden', 403);
   }
 
-  if (req.body.categoryId || req.body.category) {
-    const category = await Category.findById(req.body.categoryId || req.body.category);
+  if (body.categoryId || body.category) {
+    category = await Category.findById(body.categoryId || body.category);
     if (!category) {
-      return sendError(res, 'Category not found', 404);
+      throw createControllerError('Category not found', 404);
     }
   }
 
-  const city = req.body.city || req.body.province;
-  const region = req.body.region || city;
+  city = body.city || body.province;
+  region = body.region || city;
+  isNegotiable = body.isNegotiable !== undefined && body.isNegotiable !== null
+    ? body.isNegotiable
+    : body.negotiable;
 
   Object.assign(
     product,
     cleanObject({
-      category: req.body.categoryId || req.body.category,
-      title: req.body.title || req.body.name,
-      description: req.body.description,
-      saleType: req.body.saleType,
-      price: req.body.price,
-      startingBid: req.body.startingBid,
-      currentBid: req.body.currentBid,
-      buyNowPrice: req.body.buyNowPrice,
-      bidStep: req.body.bidStep,
-      reservePrice: req.body.reservePrice,
-      condition: req.body.condition,
-      status: req.body.status,
-      inventory: req.body.inventory,
-      fulfillmentType: req.body.fulfillmentType,
-      isNegotiable: req.body.isNegotiable ?? req.body.negotiable,
-      images: req.body.images,
-      mediaIds: req.body.mediaIds,
-      addressText: req.body.addressText || req.body.address,
-      province: req.body.province || city,
-      city,
-      region,
-      district: req.body.district,
-      ward: req.body.ward,
-      location: req.body.location,
-      tags: req.body.tags,
-      sourceUrl: req.body.sourceUrl,
-      sourceExternalId: req.body.sourceExternalId,
+      category: body.categoryId || body.category,
+      title: body.title || body.name,
+      description: body.description,
+      saleType: body.saleType,
+      price: body.price,
+      startingBid: body.startingBid,
+      currentBid: body.currentBid,
+      buyNowPrice: body.buyNowPrice,
+      bidStep: body.bidStep,
+      reservePrice: body.reservePrice,
+      condition: body.condition,
+      status: body.status,
+      inventory: body.inventory,
+      fulfillmentType: body.fulfillmentType,
+      isNegotiable: isNegotiable,
+      images: body.images,
+      mediaIds: body.mediaIds,
+      addressText: body.addressText || body.address,
+      province: body.province || city,
+      city: city,
+      region: region,
+      district: body.district,
+      ward: body.ward,
+      location: body.location,
+      tags: body.tags,
+      sourceUrl: body.sourceUrl,
+      sourceExternalId: body.sourceExternalId,
     })
   );
   applyProductStatusTimestamps(product);
 
   await product.save();
-  return sendSuccess(res, product);
-});
+  return product;
+};
 
-exports.deleteProduct = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id);
+module.exports.deleteProduct = async function(productId, actor) {
+  var product = await Product.findById(productId);
+  var isOwner;
+  var isAdmin;
+
   if (!product) {
-    return sendError(res, 'Product not found', 404);
+    return false;
   }
 
-  const isOwner = String(product.seller) === String(req.user._id);
-  const isAdmin = (req.userRoles || []).includes('admin');
+  isOwner = String(product.seller) === String(actor.user && actor.user._id);
+  isAdmin = (actor.userRoles || []).indexOf('admin') !== -1;
   if (!isOwner && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
+    throw createControllerError('Forbidden', 403);
   }
 
   await product.deleteOne();
-  return sendSuccess(res, { deleted: true });
-});
+  return true;
+};

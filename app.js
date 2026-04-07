@@ -52,7 +52,7 @@ app.use(function(req, res) {
 
 app.use(function(error, req, res, next) {
   console.error(error);
-  const status = error.status || 500;
+  var status = error.status || 500;
   res.status(status).json({
     success: false,
     message: error.message || 'Internal server error',
@@ -60,3 +60,4 @@ app.use(function(error, req, res, next) {
 });
 
 module.exports = app;
+

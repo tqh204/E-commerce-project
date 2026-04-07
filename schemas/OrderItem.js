@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+var mongoose = require('mongoose');
 
-const orderItemSchema = new mongoose.Schema(
+var orderItemSchema = new mongoose.Schema(
   {
     order: {
       type: mongoose.Schema.Types.ObjectId,
@@ -59,4 +59,5 @@ orderItemSchema.index({ order: 1 });
 orderItemSchema.index({ product: 1 });
 
 module.exports = mongoose.models.OrderItem || mongoose.model('OrderItem', orderItemSchema);
+
 

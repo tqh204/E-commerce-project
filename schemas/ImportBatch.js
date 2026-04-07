@@ -1,7 +1,9 @@
-const mongoose = require('mongoose');
-const { urlValidator } = require('./validators');
+var mongoose = require('mongoose');
+var validators = require('./validators');
 
-const importBatchSchema = new mongoose.Schema(
+var urlValidator = validators.urlValidator;
+
+var importBatchSchema = new mongoose.Schema(
   {
     source: {
       type: String,
@@ -86,5 +88,4 @@ const importBatchSchema = new mongoose.Schema(
 
 importBatchSchema.index({ source: 1, status: 1, createdAt: -1 });
 
-module.exports =
-  mongoose.models.ImportBatch || mongoose.model('ImportBatch', importBatchSchema);
+module.exports = mongoose.models.ImportBatch || mongoose.model('ImportBatch', importBatchSchema);

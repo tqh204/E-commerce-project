@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+var mongoose = require('mongoose');
 
-const escrowTransactionSchema = new mongoose.Schema(
+var escrowTransactionSchema = new mongoose.Schema(
   {
     order: {
       type: mongoose.Schema.Types.ObjectId,
@@ -98,3 +98,4 @@ escrowTransactionSchema.index({ buyer: 1, seller: 1, status: 1 });
 module.exports =
   mongoose.models.EscrowTransaction ||
   mongoose.model('EscrowTransaction', escrowTransactionSchema);
+

@@ -1,14 +1,14 @@
-const mongoose = require('mongoose');
-const {
-  arrayLengthValidator,
-  coordinatesValidator,
-  normalizeProductCondition,
-  normalizeProductStatus,
-  slugify,
-  urlValidator,
-} = require('./validators');
+var mongoose = require('mongoose');
+var validators = require('./validators');
 
-const productSchema = new mongoose.Schema(
+var arrayLengthValidator = validators.arrayLengthValidator;
+var coordinatesValidator = validators.coordinatesValidator;
+var normalizeProductCondition = validators.normalizeProductCondition;
+var normalizeProductStatus = validators.normalizeProductStatus;
+var slugify = validators.slugify;
+var urlValidator = validators.urlValidator;
+
+var productSchema = new mongoose.Schema(
   {
     seller: {
       type: mongoose.Schema.Types.ObjectId,
@@ -242,7 +242,7 @@ const productSchema = new mongoose.Schema(
 
 productSchema.pre('validate', function setSlugAndThumbnail() {
   if (!this.slug && this.title) {
-    this.slug = `${slugify(this.title)}-${String(this._id || '').slice(-6)}`;
+    this.slug = slugify(this.title) + '-' + String(this._id || '').slice(-6);
   }
 
   if (!this.thumbnailImage && this.images.length > 0) {
@@ -254,8 +254,9 @@ productSchema.index({ location: '2dsphere' }, { sparse: true });
 productSchema.index({ title: 'text', description: 'text', tags: 'text' });
 productSchema.index({ seller: 1, status: 1, saleType: 1 });
 productSchema.index({ category: 1, status: 1, price: 1 });
-productSchema.index({ source: 1, sourceExternalId: 1 }, { unique: true, partialFilterExpression: { sourceExternalId: { $exists: true } } });
+productSchema.index(
+  { source: 1, sourceExternalId: 1 },
+  { unique: true, partialFilterExpression: { sourceExternalId: { $exists: true } } }
+);
 
 module.exports = mongoose.models.Product || mongoose.model('Product', productSchema);
-
-

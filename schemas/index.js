@@ -1,22 +1,22 @@
-const Role = require('./Role');
-const User = require('./User');
-const RefreshToken = require('./RefreshToken');
-const Address = require('./Address');
-const Category = require('./Category');
-const Media = require('./Media');
-const ImportBatch = require('./ImportBatch');
-const Product = require('./Product');
-const Auction = require('./Auction');
-const Bid = require('./Bid');
-const Order = require('./Order');
-const OrderItem = require('./OrderItem');
-const EscrowTransaction = require('./EscrowTransaction');
-const WalletTransaction = require('./WalletTransaction');
-const MomoPayment = require('./MomoPayment');
-const Notification = require('./Notification');
-const Conversation = require('./Conversation');
-const Message = require('./Message');
-const Review = require('./Review');
+var Role = require('./Role');
+var User = require('./User');
+var RefreshToken = require('./RefreshToken');
+var Address = require('./Address');
+var Category = require('./Category');
+var Media = require('./Media');
+var ImportBatch = require('./ImportBatch');
+var Product = require('./Product');
+var Auction = require('./Auction');
+var Bid = require('./Bid');
+var Order = require('./Order');
+var OrderItem = require('./OrderItem');
+var EscrowTransaction = require('./EscrowTransaction');
+var WalletTransaction = require('./WalletTransaction');
+var MomoPayment = require('./MomoPayment');
+var Notification = require('./Notification');
+var Conversation = require('./Conversation');
+var Message = require('./Message');
+var Review = require('./Review');
 
 module.exports = {
   Role,
@@ -39,3 +39,4 @@ module.exports = {
   Message,
   Review,
 };
+

@@ -1,27 +1,54 @@
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const { Category, Conversation, Media, Message, Product, User } = require('../schemas');
-const { emitMessageUpdated } = require('../lib/socket');
-const { asyncHandler, sendError, sendSuccess } = require('../lib/http');
+var fs = require('fs');
+var path = require('path');
+var crypto = require('crypto');
+var schemas = require('../schemas');
+var socketLib = require('../lib/socket');
 
-const uploadRoot = path.join(__dirname, '..', 'public', 'uploads');
-const mimeToExtension = {
+var Category = schemas.Category;
+var Conversation = schemas.Conversation;
+var Media = schemas.Media;
+var Message = schemas.Message;
+var Product = schemas.Product;
+var User = schemas.User;
+var emitMessageUpdated = socketLib.emitMessageUpdated;
+
+var uploadRoot = path.join(__dirname, '..', 'public', 'uploads');
+var mimeToExtension = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
   'image/gif': 'gif',
 };
 
-const ensureUploadDirectory = (targetDir) => {
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
+  }
+  return error;
+};
+
+var ensureUploadDirectory = function(targetDir) {
   fs.mkdirSync(targetDir, { recursive: true });
 };
 
-const buildLocalMediaUrl = (relativePath) => `/${relativePath.replace(/\\/g, '/')}`;
+var buildLocalMediaUrl = function(relativePath) {
+  return '/' + relativePath.replace(/\\/g, '/');
+};
 
-const syncMediaOwner = async ({ ownerType, ownerId, media }) => {
+var generateRandomId = function() {
+  return crypto.randomBytes(16).toString('hex');
+};
+
+var syncMediaOwner = async function(options) {
+  var ownerType = options.ownerType;
+  var ownerId = options.ownerId;
+  var media = options.media;
+  var update;
+
   if (ownerType === 'product') {
-    const update = {
+    update = {
       $addToSet: {
         mediaIds: media._id,
         images: media.url,
@@ -68,15 +95,28 @@ const syncMediaOwner = async ({ ownerType, ownerId, media }) => {
   }
 };
 
-const unsyncMediaOwner = async ({ ownerType, ownerId, media }) => {
+var unsyncMediaOwner = async function(options) {
+  var ownerType = options.ownerType;
+  var ownerId = options.ownerId;
+  var media = options.media;
+  var product;
+  var user;
+  var patch;
+  var message;
+  var category;
+
   if (ownerType === 'product') {
-    const product = await Product.findById(ownerId);
+    product = await Product.findById(ownerId);
     if (!product) {
       return;
     }
 
-    product.mediaIds = (product.mediaIds || []).filter((id) => String(id) !== String(media._id));
-    product.images = (product.images || []).filter((url) => url !== media.url);
+    product.mediaIds = (product.mediaIds || []).filter(function(id) {
+      return String(id) !== String(media._id);
+    });
+    product.images = (product.images || []).filter(function(url) {
+      return url !== media.url;
+    });
     if (product.thumbnailImage === media.url) {
       product.thumbnailImage = product.images[0] || null;
     }
@@ -85,12 +125,12 @@ const unsyncMediaOwner = async ({ ownerType, ownerId, media }) => {
   }
 
   if (ownerType === 'user') {
-    const user = await User.findById(ownerId).select('avatarMedia avatarUrl');
+    user = await User.findById(ownerId).select('avatarMedia avatarUrl');
     if (!user) {
       return;
     }
 
-    const patch = {};
+    patch = {};
     if (String(user.avatarMedia || '') === String(media._id)) {
       patch.avatarMedia = null;
     }
@@ -104,15 +144,17 @@ const unsyncMediaOwner = async ({ ownerType, ownerId, media }) => {
   }
 
   if (ownerType === 'message') {
-    const message = await Message.findById(ownerId);
+    message = await Message.findById(ownerId);
     if (!message) {
       return;
     }
 
-    message.attachments = (message.attachments || []).filter(
-      (attachmentId) => String(attachmentId) !== String(media._id)
-    );
-    message.attachmentUrls = (message.attachmentUrls || []).filter((url) => url !== media.url);
+    message.attachments = (message.attachments || []).filter(function(attachmentId) {
+      return String(attachmentId) !== String(media._id);
+    });
+    message.attachmentUrls = (message.attachmentUrls || []).filter(function(url) {
+      return url !== media.url;
+    });
     if (!message.attachments.length && message.messageType === 'image') {
       message.messageType = 'text';
     }
@@ -121,7 +163,7 @@ const unsyncMediaOwner = async ({ ownerType, ownerId, media }) => {
   }
 
   if (ownerType === 'category') {
-    const category = await Category.findById(ownerId);
+    category = await Category.findById(ownerId);
     if (!category) {
       return;
     }
@@ -133,19 +175,22 @@ const unsyncMediaOwner = async ({ ownerType, ownerId, media }) => {
   }
 };
 
-const emitMessageMediaUpdate = async (ownerType, ownerId) => {
+var emitMessageMediaUpdate = async function(ownerType, ownerId) {
+  var message;
+  var conversation;
+
   if (ownerType !== 'message') {
     return;
   }
 
-  const message = await Message.findById(ownerId)
+  message = await Message.findById(ownerId)
     .populate('sender', 'username fullName avatarUrl')
     .populate('replyTo', 'content');
   if (!message) {
     return;
   }
 
-  const conversation = await Conversation.findById(message.conversation)
+  conversation = await Conversation.findById(message.conversation)
     .populate('participants', 'username fullName avatarUrl')
     .populate('product', 'title thumbnailImage seller');
   if (!conversation) {
@@ -155,96 +200,138 @@ const emitMessageMediaUpdate = async (ownerType, ownerId) => {
   emitMessageUpdated(conversation, message);
 };
 
-const createMediaFromLocalFile = async ({ req, ownerType, ownerId, filePath, fileName, originalName, mimeType, size, isPrimary = false }) => {
-  const relativePath = path.relative(path.join(__dirname, '..', 'public'), filePath);
+var createMediaFromLocalFile = async function(options) {
+  var req = options.req;
+  var ownerType = options.ownerType;
+  var ownerId = options.ownerId;
+  var filePath = options.filePath;
+  var fileName = options.fileName;
+  var originalName = options.originalName;
+  var mimeType = options.mimeType;
+  var size = options.size;
+  var isPrimary = options.isPrimary || false;
+  var relativePath = path.relative(path.join(__dirname, '..', 'public'), filePath);
+  var mediaType = String(mimeType || '').indexOf('image/') === 0 ? 'image' : 'file';
+
   return Media.create({
     uploader: req.user._id,
-    ownerType,
-    ownerId,
-    type: mimeType.startsWith('image/') ? 'image' : 'file',
+    ownerType: ownerType,
+    ownerId: ownerId,
+    type: mediaType,
     storageProvider: 'local',
     url: buildLocalMediaUrl(relativePath),
     filename: fileName,
     originalName: originalName || fileName,
-    mimeType,
-    size,
-    isPrimary,
+    mimeType: mimeType,
+    size: size,
+    isPrimary: isPrimary,
   });
 };
 
-exports.uploadBase64 = asyncHandler(async (req, res) => {
-  const { ownerType, ownerId, fileName, mimeType = 'image/jpeg', base64, isPrimary = false } = req.body;
+module.exports.uploadBase64 = async function(body, req) {
+  var ownerType = body.ownerType;
+  var ownerId = body.ownerId;
+  var fileName = body.fileName;
+  var mimeType = body.mimeType || 'image/jpeg';
+  var base64 = body.base64;
+  var isPrimary = body.isPrimary || false;
+  var cleaned;
+  var extension;
+  var now;
+  var year;
+  var month;
+  var targetDir;
+  var generatedName;
+  var absoluteFilePath;
+  var media;
+
   if (!ownerType || !ownerId || !base64) {
-    return sendError(res, 'ownerType, ownerId and base64 are required', 400);
+    throw createControllerError('ownerType, ownerId and base64 are required', 400);
   }
 
-  const cleaned = String(base64).includes(',') ? String(base64).split(',').pop() : String(base64);
-  const extension = mimeToExtension[mimeType] || path.extname(fileName || '').replace('.', '') || 'bin';
-  const year = String(new Date().getFullYear());
-  const month = String(new Date().getMonth() + 1).padStart(2, '0');
-  const targetDir = path.join(uploadRoot, year, month);
+  cleaned = String(base64);
+  if (cleaned.indexOf(',') !== -1) {
+    cleaned = cleaned.split(',').pop();
+  }
+
+  extension = mimeToExtension[mimeType] || path.extname(fileName || '').replace('.', '') || 'bin';
+  now = new Date();
+  year = String(now.getFullYear());
+  month = String(now.getMonth() + 1);
+  if (month.length < 2) {
+    month = '0' + month;
+  }
+  targetDir = path.join(uploadRoot, year, month);
   ensureUploadDirectory(targetDir);
 
-  const generatedName = `${crypto.randomUUID()}.${extension}`;
-  const absoluteFilePath = path.join(targetDir, generatedName);
+  generatedName = generateRandomId() + '.' + extension;
+  absoluteFilePath = path.join(targetDir, generatedName);
   fs.writeFileSync(absoluteFilePath, Buffer.from(cleaned, 'base64'));
 
-  const media = await createMediaFromLocalFile({
-    req,
-    ownerType,
-    ownerId,
+  media = await createMediaFromLocalFile({
+    req: req,
+    ownerType: ownerType,
+    ownerId: ownerId,
     filePath: absoluteFilePath,
     fileName: generatedName,
     originalName: fileName || generatedName,
-    mimeType,
+    mimeType: mimeType,
     size: fs.statSync(absoluteFilePath).size,
-    isPrimary,
+    isPrimary: isPrimary,
   });
 
-  await syncMediaOwner({ ownerType, ownerId, media });
+  await syncMediaOwner({ ownerType: ownerType, ownerId: ownerId, media: media });
   await emitMessageMediaUpdate(ownerType, ownerId);
 
-  return sendSuccess(res, media, null, 201);
-});
+  return media;
+};
 
-exports.uploadMultipart = asyncHandler(async (req, res) => {
-  const { ownerType, ownerId } = req.body;
-  const isPrimary = req.body.isPrimary === 'true' || req.body.isPrimary === true;
+module.exports.uploadMultipart = async function(body, file, req) {
+  var ownerType = body.ownerType;
+  var ownerId = body.ownerId;
+  var isPrimary = body.isPrimary === 'true' || body.isPrimary === true;
+  var media;
 
-  if (!ownerType || !ownerId || !req.file) {
-    return sendError(res, 'ownerType, ownerId and file are required', 400);
+  if (!ownerType || !ownerId || !file) {
+    throw createControllerError('ownerType, ownerId and file are required', 400);
   }
 
-  const media = await createMediaFromLocalFile({
-    req,
-    ownerType,
-    ownerId,
-    filePath: req.file.path,
-    fileName: req.file.filename,
-    originalName: req.file.originalname,
-    mimeType: req.file.mimetype,
-    size: req.file.size,
-    isPrimary,
+  media = await createMediaFromLocalFile({
+    req: req,
+    ownerType: ownerType,
+    ownerId: ownerId,
+    filePath: file.path,
+    fileName: file.filename,
+    originalName: file.originalname,
+    mimeType: file.mimetype,
+    size: file.size,
+    isPrimary: isPrimary,
   });
 
-  await syncMediaOwner({ ownerType, ownerId, media });
+  await syncMediaOwner({ ownerType: ownerType, ownerId: ownerId, media: media });
   await emitMessageMediaUpdate(ownerType, ownerId);
 
-  return sendSuccess(res, media, null, 201);
-});
+  return media;
+};
 
-exports.uploadMultipartMany = asyncHandler(async (req, res) => {
-  const { ownerType, ownerId } = req.body;
-  if (!ownerType || !ownerId || !req.files || req.files.length === 0) {
-    return sendError(res, 'ownerType, ownerId and files are required', 400);
+module.exports.uploadMultipartMany = async function(body, files, req) {
+  var ownerType = body.ownerType;
+  var ownerId = body.ownerId;
+  var medias = [];
+  var index;
+  var file;
+  var media;
+
+  if (!ownerType || !ownerId || !files || files.length === 0) {
+    throw createControllerError('ownerType, ownerId and files are required', 400);
   }
 
-  const medias = [];
-  for (const [index, file] of req.files.entries()) {
-    const media = await createMediaFromLocalFile({
-      req,
-      ownerType,
-      ownerId,
+  for (index = 0; index < files.length; index += 1) {
+    file = files[index];
+    media = await createMediaFromLocalFile({
+      req: req,
+      ownerType: ownerType,
+      ownerId: ownerId,
       filePath: file.path,
       fileName: file.filename,
       originalName: file.originalname,
@@ -252,59 +339,75 @@ exports.uploadMultipartMany = asyncHandler(async (req, res) => {
       size: file.size,
       isPrimary: index === 0,
     });
-    await syncMediaOwner({ ownerType, ownerId, media });
+    await syncMediaOwner({ ownerType: ownerType, ownerId: ownerId, media: media });
     medias.push(media);
   }
 
   await emitMessageMediaUpdate(ownerType, ownerId);
 
-  return sendSuccess(res, medias, null, 201);
-});
+  return medias;
+};
 
-exports.registerRemoteMedia = asyncHandler(async (req, res) => {
-  const { ownerType, ownerId, url, thumbnailUrl, type = 'image', isPrimary = false } = req.body;
+module.exports.registerRemoteMedia = async function(body, req) {
+  var ownerType = body.ownerType;
+  var ownerId = body.ownerId;
+  var url = body.url;
+  var thumbnailUrl = body.thumbnailUrl;
+  var type = body.type || 'image';
+  var isPrimary = body.isPrimary || false;
+  var media;
+
   if (!ownerType || !ownerId || !url) {
-    return sendError(res, 'ownerType, ownerId and url are required', 400);
+    throw createControllerError('ownerType, ownerId and url are required', 400);
   }
 
-  const media = await Media.create({
+  media = await Media.create({
     uploader: req.user._id,
-    ownerType,
-    ownerId,
-    type,
+    ownerType: ownerType,
+    ownerId: ownerId,
+    type: type,
     storageProvider: 'remote',
-    url,
-    thumbnailUrl,
-    isPrimary,
+    url: url,
+    thumbnailUrl: thumbnailUrl,
+    isPrimary: isPrimary,
   });
 
-  await syncMediaOwner({ ownerType, ownerId, media });
+  await syncMediaOwner({ ownerType: ownerType, ownerId: ownerId, media: media });
   await emitMessageMediaUpdate(ownerType, ownerId);
 
-  return sendSuccess(res, media, null, 201);
-});
+  return media;
+};
 
-exports.deleteMedia = asyncHandler(async (req, res) => {
-  const media = await Media.findById(req.params.id);
+module.exports.deleteMedia = async function(mediaId, actor) {
+  var media = await Media.findById(mediaId);
+  var isOwner;
+  var isAdmin;
+  var absolutePath;
+
   if (!media) {
-    return sendError(res, 'Media not found', 404);
+    return false;
   }
 
-  const isOwner = String(media.uploader) === String(req.user._id);
-  const isAdmin = (req.userRoles || []).includes('admin');
+  isOwner = String(media.uploader) === String(actor.user && actor.user._id);
+  isAdmin = (actor.userRoles || []).indexOf('admin') !== -1;
   if (!isOwner && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
+    throw createControllerError('Forbidden', 403);
   }
 
-  if (media.storageProvider === 'local' && media.url.startsWith('/uploads/')) {
-    const absolutePath = path.join(__dirname, '..', 'public', media.url);
+  if (media.storageProvider === 'local' && String(media.url || '').indexOf('/uploads/') === 0) {
+    absolutePath = path.join(__dirname, '..', 'public', media.url);
     if (fs.existsSync(absolutePath)) {
       fs.unlinkSync(absolutePath);
     }
   }
 
-  await unsyncMediaOwner({ ownerType: media.ownerType, ownerId: media.ownerId, media });
+  await unsyncMediaOwner({
+    ownerType: media.ownerType,
+    ownerId: media.ownerId,
+    media: media,
+  });
   await emitMessageMediaUpdate(media.ownerType, media.ownerId);
   await media.deleteOne();
-  return sendSuccess(res, { deleted: true });
-});
+
+  return true;
+};

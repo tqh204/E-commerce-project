@@ -10,9 +10,13 @@ var app = require('../app');
 var debug = require('debug')('e-commerce:server');
 var http = require('http');
 var connectDB = require('../config/database');
-var { startAuctionLifecycleMonitor } = require('../lib/auctionLifecycle');
-var { startEscrowLifecycleMonitor } = require('../lib/escrowLifecycle');
-var { initSocket } = require('../lib/socket');
+var auctionLifecycleLib = require('../lib/auctionLifecycle');
+var escrowLifecycleLib = require('../lib/escrowLifecycle');
+var socketLib = require('../lib/socket');
+
+var startAuctionLifecycleMonitor = auctionLifecycleLib.startAuctionLifecycleMonitor;
+var startEscrowLifecycleMonitor = escrowLifecycleLib.startEscrowLifecycleMonitor;
+var initSocket = socketLib.initSocket;
 
 /**
  * Get port from environment and store in Express.
@@ -53,12 +57,10 @@ function normalizePort(val) {
   var port = parseInt(val, 10);
 
   if (isNaN(port)) {
-    // named pipe
     return val;
   }
 
   if (port >= 0) {
-    // port number
     return port;
   }
 
@@ -70,15 +72,14 @@ function normalizePort(val) {
  */
 
 function onError(error) {
+  var bind;
+
   if (error.syscall !== 'listen') {
     throw error;
   }
 
-  var bind = typeof port === 'string'
-    ? 'Pipe ' + port
-    : 'Port ' + port;
+  bind = typeof port === 'string' ? 'Pipe ' + port : 'Port ' + port;
 
-  // handle specific listen errors with friendly messages
   switch (error.code) {
     case 'EACCES':
       console.error(bind + ' requires elevated privileges');
@@ -99,8 +100,6 @@ function onError(error) {
 
 function onListening() {
   var addr = server.address();
-  var bind = typeof addr === 'string'
-    ? 'pipe ' + addr
-    : 'port ' + addr.port;
+  var bind = typeof addr === 'string' ? 'pipe ' + addr : 'port ' + addr.port;
   debug('Listening on ' + bind);
 }

@@ -1,7 +1,9 @@
-const mongoose = require('mongoose');
-const { urlValidator } = require('./validators');
+var mongoose = require('mongoose');
+var validators = require('./validators');
 
-const mediaSchema = new mongoose.Schema(
+var urlValidator = validators.urlValidator;
+
+var mediaSchema = new mongoose.Schema(
   {
     uploader: {
       type: mongoose.Schema.Types.ObjectId,

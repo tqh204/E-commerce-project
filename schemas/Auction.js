@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+var mongoose = require('mongoose');
 
-const auctionSchema = new mongoose.Schema(
+var auctionSchema = new mongoose.Schema(
   {
     product: {
       type: mongoose.Schema.Types.ObjectId,
@@ -98,3 +98,4 @@ auctionSchema.index({ status: 1, endAt: 1 });
 auctionSchema.index({ seller: 1, status: 1 });
 
 module.exports = mongoose.models.Auction || mongoose.model('Auction', auctionSchema);
+

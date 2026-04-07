@@ -1,7 +1,11 @@
-const mongoose = require('mongoose');
-const { coordinatesValidator, phoneValidator, POSTAL_CODE_REGEX } = require('./validators');
+var mongoose = require('mongoose');
+var validators = require('./validators');
 
-const locationSchema = new mongoose.Schema(
+var coordinatesValidator = validators.coordinatesValidator;
+var phoneValidator = validators.phoneValidator;
+var POSTAL_CODE_REGEX = validators.POSTAL_CODE_REGEX;
+
+var locationSchema = new mongoose.Schema(
   {
     type: {
       type: String,
@@ -19,7 +23,7 @@ const locationSchema = new mongoose.Schema(
   }
 );
 
-const addressSchema = new mongoose.Schema(
+var addressSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,

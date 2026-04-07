@@ -1,7 +1,9 @@
-const mongoose = require('mongoose');
-const { arrayLengthValidator } = require('./validators');
+var mongoose = require('mongoose');
+var validators = require('./validators');
 
-const reviewSchema = new mongoose.Schema(
+var arrayLengthValidator = validators.arrayLengthValidator;
+
+var reviewSchema = new mongoose.Schema(
   {
     order: {
       type: mongoose.Schema.Types.ObjectId,

@@ -1,31 +1,46 @@
-const { RefreshToken, User } = require('../schemas');
-const {
-  generateRefreshToken,
-  getRefreshTokenExpiry,
-  hashPassword,
-  hashToken,
-  signAccessToken,
-  verifyPassword,
-} = require('../lib/auth');
-const { asyncHandler, sendError, sendSuccess } = require('../lib/http');
-const { ensureSystemRoles } = require('../lib/roles');
-const { isStrongPassword, passwordRuleMessage } = require('../schemas/validators');
+var schemas = require('../schemas');
+var authLib = require('../lib/auth');
+var rolesLib = require('../lib/roles');
+var validatorLib = require('../schemas/validators');
 
-const sanitizeUser = (user) => {
-  const data = user.toObject({ virtuals: true });
+var RefreshToken = schemas.RefreshToken;
+var User = schemas.User;
+var generateRefreshToken = authLib.generateRefreshToken;
+var getRefreshTokenExpiry = authLib.getRefreshTokenExpiry;
+var hashPassword = authLib.hashPassword;
+var hashToken = authLib.hashToken;
+var signAccessToken = authLib.signAccessToken;
+var verifyPassword = authLib.verifyPassword;
+var ensureSystemRoles = rolesLib.ensureSystemRoles;
+var isStrongPassword = validatorLib.isStrongPassword;
+var passwordRuleMessage = validatorLib.passwordRuleMessage;
+
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
+  }
+  return error;
+};
+
+var sanitizeUser = function(user) {
+  var data = user.toObject({ virtuals: true });
   delete data.passwordHash;
   return data;
 };
 
-const issueTokens = async (user, req) => {
-  const hydratedUser = await User.findById(user._id).populate('roles', 'name permissions');
-  const roleNames = (hydratedUser.roles || []).map((role) => role.name);
-  const accessToken = signAccessToken({
+var issueTokens = async function(user, req) {
+  var hydratedUser = await User.findById(user._id).populate('roles', 'name permissions');
+  var roleNames = (hydratedUser.roles || []).map(function(role) {
+    return role.name;
+  });
+  var accessToken = signAccessToken({
     sub: String(hydratedUser._id),
     roles: roleNames,
     email: hydratedUser.email,
   });
-  const refreshToken = generateRefreshToken();
+  var refreshToken = generateRefreshToken();
 
   await RefreshToken.create({
     user: hydratedUser._id,
@@ -40,116 +55,138 @@ const issueTokens = async (user, req) => {
   });
 
   return {
-    accessToken,
-    refreshToken,
+    accessToken: accessToken,
+    refreshToken: refreshToken,
     user: sanitizeUser(hydratedUser),
   };
 };
 
-exports.register = asyncHandler(async (req, res) => {
-  const { username, email, password, fullName, phone } = req.body;
+module.exports.register = async function(payload, req) {
+  var username = String(payload.username || '').trim();
+  var email = String(payload.email || '').trim().toLowerCase();
+  var password = payload.password;
+  var fullName = String(payload.fullName || '').trim();
+  var phone = payload.phone;
+  var existingUser;
+  var rolesByName;
+  var defaultRole;
+  var user;
+
   if (!username || !email || !password || !fullName) {
-    return sendError(res, 'username, email, password, fullName are required', 400);
+    throw createControllerError('username, email, password, fullName are required', 400);
   }
   if (!isStrongPassword(password)) {
-    return sendError(res, passwordRuleMessage, 400);
+    throw createControllerError(passwordRuleMessage, 400);
   }
 
-  const existingUser = await User.findOne({
-    $or: [{ email: email.toLowerCase() }, { username: username.toLowerCase() }],
+  existingUser = await User.findOne({
+    $or: [{ email: email }, { username: username.toLowerCase() }],
   });
   if (existingUser) {
-    return sendError(res, 'User already exists', 409);
+    throw createControllerError('User already exists', 409);
   }
 
-  const rolesByName = await ensureSystemRoles();
-  const defaultRole = rolesByName.user;
+  rolesByName = await ensureSystemRoles();
+  defaultRole = rolesByName.user;
   if (!defaultRole) {
-    return sendError(res, 'Default user role is missing', 500);
+    throw createControllerError('Default user role is missing', 500);
   }
 
-  const user = await User.create({
-    username,
-    email,
+  user = await User.create({
+    username: username,
+    email: email,
     passwordHash: hashPassword(password),
-    fullName,
-    phone,
+    fullName: fullName,
+    phone: phone,
     roles: [defaultRole._id],
   });
 
-  const tokens = await issueTokens(user, req);
-  res.cookie('accessToken', tokens.accessToken, { httpOnly: true, sameSite: 'lax' });
-  res.cookie('refreshToken', tokens.refreshToken, { httpOnly: true, sameSite: 'lax' });
-  return sendSuccess(res, tokens, null, 201);
-});
+  return issueTokens(user, req);
+};
 
-exports.login = asyncHandler(async (req, res) => {
-  const { identifier, email, username, password } = req.body;
-  const loginValue = identifier || email || username;
+module.exports.login = async function(payload, req) {
+  var identifier = payload.identifier;
+  var email = payload.email;
+  var username = payload.username;
+  var password = payload.password;
+  var loginValue = String(identifier || email || username || '').trim().toLowerCase();
+  var user;
+
   if (!loginValue || !password) {
-    return sendError(res, 'identifier and password are required', 400);
+    throw createControllerError('identifier and password are required', 400);
   }
 
-  const user = await User.findOne({
-    $or: [{ email: loginValue.toLowerCase() }, { username: loginValue.toLowerCase() }],
+  user = await User.findOne({
+    $or: [{ email: loginValue }, { username: loginValue }],
   })
     .select('+passwordHash')
     .populate('roles', 'name permissions');
 
   if (!user || !verifyPassword(password, user.passwordHash)) {
-    return sendError(res, 'Invalid credentials', 401);
+    throw createControllerError('Invalid credentials', 401);
   }
 
   user.lastLoginAt = new Date();
   await user.save();
 
-  const tokens = await issueTokens(user, req);
-  res.cookie('accessToken', tokens.accessToken, { httpOnly: true, sameSite: 'lax' });
-  res.cookie('refreshToken', tokens.refreshToken, { httpOnly: true, sameSite: 'lax' });
-  return sendSuccess(res, tokens);
-});
+  return issueTokens(user, req);
+};
 
-exports.refresh = asyncHandler(async (req, res) => {
-  const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
-  if (!refreshToken) {
-    return sendError(res, 'refreshToken is required', 400);
+module.exports.refresh = async function(refreshToken) {
+  var tokenValue = String(refreshToken || '').trim();
+  var tokenHashValue;
+  var refreshTokenDoc;
+  var user;
+  var accessToken;
+
+  if (!tokenValue) {
+    throw createControllerError('refreshToken is required', 400);
   }
 
-  const tokenHash = hashToken(refreshToken);
-  const refreshTokenDoc = await RefreshToken.findOne({ tokenHash }).populate('user');
+  tokenHashValue = hashToken(tokenValue);
+  refreshTokenDoc = await RefreshToken.findOne({ tokenHash: tokenHashValue }).populate('user');
   if (!refreshTokenDoc || refreshTokenDoc.revokedAt || refreshTokenDoc.expiresAt < new Date()) {
-    return sendError(res, 'Refresh token is invalid or expired', 401);
+    throw createControllerError('Refresh token is invalid or expired', 401);
   }
 
   refreshTokenDoc.lastUsedAt = new Date();
   await refreshTokenDoc.save();
 
-  const user = await User.findById(refreshTokenDoc.user._id).populate('roles', 'name permissions');
-  const accessToken = signAccessToken({
+  user = await User.findById(refreshTokenDoc.user._id).populate('roles', 'name permissions');
+  accessToken = signAccessToken({
     sub: String(user._id),
-    roles: (user.roles || []).map((role) => role.name),
+    roles: (user.roles || []).map(function(role) {
+      return role.name;
+    }),
     email: user.email,
   });
 
-  res.cookie('accessToken', accessToken, { httpOnly: true, sameSite: 'lax' });
-  return sendSuccess(res, { accessToken, refreshToken, user: sanitizeUser(user) });
-});
+  return {
+    accessToken: accessToken,
+    refreshToken: tokenValue,
+    user: sanitizeUser(user),
+  };
+};
 
-exports.logout = asyncHandler(async (req, res) => {
-  const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
-  if (refreshToken) {
+module.exports.logout = async function(refreshToken) {
+  var tokenValue = String(refreshToken || '').trim();
+
+  if (tokenValue) {
     await RefreshToken.findOneAndUpdate(
-      { tokenHash: hashToken(refreshToken) },
+      { tokenHash: hashToken(tokenValue) },
       { revokedAt: new Date() }
     );
   }
 
-  res.clearCookie('accessToken');
-  res.clearCookie('refreshToken');
-  return sendSuccess(res, { loggedOut: true });
-});
+  return { loggedOut: true };
+};
 
-exports.me = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id).populate('roles', 'name permissions');
-  return sendSuccess(res, sanitizeUser(user));
-});
+module.exports.me = async function(userId) {
+  var user = await User.findById(userId).populate('roles', 'name permissions');
+
+  if (!user) {
+    return null;
+  }
+
+  return sanitizeUser(user);
+};

@@ -1,45 +1,56 @@
-const { ImportBatch } = require('../schemas');
-const { importFromChotot } = require('../lib/chototImport');
-const {
-  asyncHandler,
-  buildPaginationMeta,
-  parsePagination,
-  sendError,
-  sendSuccess,
-} = require('../lib/http');
+var schemas = require('../schemas');
+var chototImportLib = require('../lib/chototImport');
+var httpLib = require('../lib/http');
 
-exports.importChotot = asyncHandler(async (req, res) => {
-  if (!req.body.categoryUrl && req.body.mode !== 'api') {
-    return sendError(res, 'categoryUrl is required for html import', 400);
+var ImportBatch = schemas.ImportBatch;
+var importFromChotot = chototImportLib.importFromChotot;
+var buildPaginationMeta = httpLib.buildPaginationMeta;
+var parsePagination = httpLib.parsePagination;
+
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
+  }
+  return error;
+};
+
+module.exports.importChotot = async function(body, actor) {
+  if (!body.categoryUrl && body.mode !== 'api') {
+    throw createControllerError('categoryUrl is required for html import', 400);
   }
 
-  const result = await importFromChotot({
-    categoryUrl: req.body.categoryUrl,
-    categoryName: req.body.categoryName || 'Chotot',
-    maxPages: Number(req.body.maxPages || 1),
-    keyword: req.body.keyword,
-    mode: req.body.mode || 'html',
-    createdBy: req.user._id,
+  return importFromChotot({
+    categoryUrl: body.categoryUrl,
+    categoryName: body.categoryName || 'Chotot',
+    maxPages: Number(body.maxPages || 1),
+    keyword: body.keyword,
+    mode: body.mode || 'html',
+    createdBy: actor.user._id,
   });
+};
 
-  return sendSuccess(res, result, null, 201);
-});
-
-exports.listImportBatches = asyncHandler(async (req, res) => {
-  const { page, limit, skip } = parsePagination(req.query);
-  const [batches, total] = await Promise.all([
-    ImportBatch.find().populate('createdBy', 'username fullName').sort({ createdAt: -1 }).skip(skip).limit(limit),
+module.exports.listImportBatches = async function(query) {
+  var pagination = parsePagination(query || {});
+  var page = pagination.page;
+  var limit = pagination.limit;
+  var skip = pagination.skip;
+  var results = await Promise.all([
+    ImportBatch.find()
+      .populate('createdBy', 'username fullName')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
     ImportBatch.countDocuments(),
   ]);
 
-  return sendSuccess(res, batches, buildPaginationMeta(page, limit, total));
-});
+  return {
+    data: results[0],
+    meta: buildPaginationMeta(page, limit, results[1]),
+  };
+};
 
-exports.getImportBatchById = asyncHandler(async (req, res) => {
-  const batch = await ImportBatch.findById(req.params.id).populate('createdBy', 'username fullName');
-  if (!batch) {
-    return sendError(res, 'Import batch not found', 404);
-  }
-
-  return sendSuccess(res, batch);
-});
+module.exports.getImportBatchById = async function(batchId) {
+  return ImportBatch.findById(batchId).populate('createdBy', 'username fullName');
+};

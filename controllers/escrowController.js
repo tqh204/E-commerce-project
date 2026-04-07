@@ -1,113 +1,88 @@
-const { EscrowTransaction } = require('../schemas');
-const {
-  asyncHandler,
-  buildPaginationMeta,
-  parsePagination,
-  sendError,
-  sendSuccess,
-} = require('../lib/http');
-const {
-  holdEscrowForOrder,
-  loadEscrowBundle,
-  refundEscrowToBuyer,
-  releaseEscrowToSeller,
-} = require('../lib/escrowService');
+var schemas = require('../schemas');
+var httpLib = require('../lib/http');
+var escrowService = require('../lib/escrowService');
 
-const canAccessEscrow = (escrow, req) =>
-  (req.userRoles || []).includes('admin') ||
-  String(escrow.buyer) === String(req.user._id) ||
-  String(escrow.seller) === String(req.user._id);
+var EscrowTransaction = schemas.EscrowTransaction;
+var buildPaginationMeta = httpLib.buildPaginationMeta;
+var parsePagination = httpLib.parsePagination;
+var holdEscrowForOrder = escrowService.holdEscrowForOrder;
+var loadEscrowBundle = escrowService.loadEscrowBundle;
+var refundEscrowToBuyer = escrowService.refundEscrowToBuyer;
+var releaseEscrowToSeller = escrowService.releaseEscrowToSeller;
 
-exports.listEscrows = asyncHandler(async (req, res) => {
-  const { page, limit, skip } = parsePagination(req.query);
-  const filter = {};
-
-  if (!(req.userRoles || []).includes('admin')) {
-    filter.$or = [{ buyer: req.user._id }, { seller: req.user._id }];
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
   }
+  return error;
+};
 
-  if (req.query.status) {
-    filter.status = req.query.status;
-  }
+var canAccessEscrow = function(escrow, actor) {
+  return (actor.userRoles || []).indexOf('admin') !== -1 ||
+    String(escrow.buyer) === String(actor.user && actor.user._id) ||
+    String(escrow.seller) === String(actor.user && actor.user._id);
+};
 
-  const [escrows, total] = await Promise.all([
-    EscrowTransaction.find(filter)
-      .populate('order', 'orderCode status totalAmount')
-      .populate('buyer', 'username fullName')
-      .populate('seller', 'username fullName')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    EscrowTransaction.countDocuments(filter),
-  ]);
+var updateEscrowStatus = async function(escrowId, body, actor, config) {
+  var nextStatus = config.nextStatus;
+  var noteField = config.noteField === undefined ? null : config.noteField;
+  var timestampField = config.timestampField === undefined ? null : config.timestampField;
+  var bundle = await loadEscrowBundle(escrowId);
+  var escrow;
+  var order;
+  var heldEscrow;
+  var released;
+  var refunded;
 
-  return sendSuccess(res, escrows, buildPaginationMeta(page, limit, total));
-});
-
-exports.getEscrowById = asyncHandler(async (req, res) => {
-  const escrow = await EscrowTransaction.findById(req.params.id)
-    .populate('order')
-    .populate('buyer', 'username fullName')
-    .populate('seller', 'username fullName');
-
-  if (!escrow) {
-    return sendError(res, 'Escrow transaction not found', 404);
-  }
-  if (!canAccessEscrow(escrow, req)) {
-    return sendError(res, 'Forbidden', 403);
-  }
-
-  return sendSuccess(res, escrow);
-});
-
-const updateEscrowStatus = async ({ req, res, nextStatus, noteField = null, timestampField = null }) => {
-  const bundle = await loadEscrowBundle(req.params.id);
   if (!bundle.escrow) {
-    return sendError(res, 'Escrow transaction not found', 404);
+    return null;
   }
-  if (!canAccessEscrow(bundle.escrow, req)) {
-    return sendError(res, 'Forbidden', 403);
+  if (!canAccessEscrow(bundle.escrow, actor)) {
+    throw createControllerError('Forbidden', 403);
   }
 
-  const { escrow, order } = bundle;
+  escrow = bundle.escrow;
+  order = bundle.order;
   if (!order) {
-    return sendError(res, 'Order linked to escrow was not found', 404);
+    throw createControllerError('Order linked to escrow was not found', 404);
   }
 
   if (nextStatus === 'held') {
-    const heldEscrow = await holdEscrowForOrder(order, {
+    heldEscrow = await holdEscrowForOrder(order, {
       flowType: escrow.flowType,
-      description: req.body.reason || 'Escrow manually held',
+      description: body.reason || 'Escrow manually held',
     });
-    if (req.body.notes !== undefined) {
-      heldEscrow.resolutionNotes = req.body.notes;
+    if (body.notes !== undefined) {
+      heldEscrow.resolutionNotes = body.notes;
       await heldEscrow.save();
     }
-    return sendSuccess(res, { escrow: heldEscrow, order });
+    return { escrow: heldEscrow, order: order };
   }
 
-  if (noteField && req.body.reason) {
-    escrow[noteField] = req.body.reason;
+  if (noteField && body.reason) {
+    escrow[noteField] = body.reason;
   }
-  if (req.body.notes !== undefined) {
-    escrow.resolutionNotes = req.body.notes;
+  if (body.notes !== undefined) {
+    escrow.resolutionNotes = body.notes;
   }
   if (timestampField) {
     escrow[timestampField] = new Date();
   }
 
   if (nextStatus === 'released') {
-    const released = await releaseEscrowToSeller(escrow, order, {
-      description: req.body.reason || 'Escrow released',
+    released = await releaseEscrowToSeller(escrow, order, {
+      description: body.reason || 'Escrow released',
     });
-    return sendSuccess(res, { escrow: released, order });
+    return { escrow: released, order: order };
   }
 
   if (nextStatus === 'refunded') {
-    const refunded = await refundEscrowToBuyer(escrow, order, {
-      description: req.body.reason || 'Escrow refunded',
+    refunded = await refundEscrowToBuyer(escrow, order, {
+      description: body.reason || 'Escrow refunded',
     });
-    return sendSuccess(res, { escrow: refunded, order });
+    return { escrow: refunded, order: order };
   }
 
   escrow.status = nextStatus;
@@ -118,33 +93,88 @@ const updateEscrowStatus = async ({ req, res, nextStatus, noteField = null, time
     await order.save();
   }
 
-  return sendSuccess(res, { escrow, order });
+  return { escrow: escrow, order: order };
 };
 
-exports.holdEscrow = asyncHandler(async (req, res) =>
-  updateEscrowStatus({ req, res, nextStatus: 'held', timestampField: 'heldAt' })
-);
+module.exports.listEscrows = async function(query, actor) {
+  var pagination = parsePagination(query || {});
+  var page = pagination.page;
+  var limit = pagination.limit;
+  var skip = pagination.skip;
+  var filter = {};
+  var result;
+  var escrows;
+  var total;
 
-exports.releaseEscrow = asyncHandler(async (req, res) =>
-  updateEscrowStatus({ req, res, nextStatus: 'released', timestampField: 'releasedAt' })
-);
+  if ((actor.userRoles || []).indexOf('admin') === -1) {
+    filter.$or = [{ buyer: actor.user._id }, { seller: actor.user._id }];
+  }
 
-exports.refundEscrow = asyncHandler(async (req, res) =>
-  updateEscrowStatus({
-    req,
-    res,
+  if (query && query.status) {
+    filter.status = query.status;
+  }
+
+  result = await Promise.all([
+    EscrowTransaction.find(filter)
+      .populate('order', 'orderCode status totalAmount')
+      .populate('buyer', 'username fullName')
+      .populate('seller', 'username fullName')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    EscrowTransaction.countDocuments(filter),
+  ]);
+  escrows = result[0];
+  total = result[1];
+
+  return {
+    data: escrows,
+    meta: buildPaginationMeta(page, limit, total),
+  };
+};
+
+module.exports.getEscrowById = async function(escrowId, actor) {
+  var escrow = await EscrowTransaction.findById(escrowId)
+    .populate('order')
+    .populate('buyer', 'username fullName')
+    .populate('seller', 'username fullName');
+
+  if (!escrow) {
+    return null;
+  }
+  if (!canAccessEscrow(escrow, actor)) {
+    throw createControllerError('Forbidden', 403);
+  }
+
+  return escrow;
+};
+
+module.exports.holdEscrow = async function(escrowId, body, actor) {
+  return updateEscrowStatus(escrowId, body || {}, actor, {
+    nextStatus: 'held',
+    timestampField: 'heldAt',
+  });
+};
+
+module.exports.releaseEscrow = async function(escrowId, body, actor) {
+  return updateEscrowStatus(escrowId, body || {}, actor, {
+    nextStatus: 'released',
+    timestampField: 'releasedAt',
+  });
+};
+
+module.exports.refundEscrow = async function(escrowId, body, actor) {
+  return updateEscrowStatus(escrowId, body || {}, actor, {
     nextStatus: 'refunded',
     timestampField: 'refundedAt',
     noteField: 'resolutionNotes',
-  })
-);
+  });
+};
 
-exports.disputeEscrow = asyncHandler(async (req, res) =>
-  updateEscrowStatus({
-    req,
-    res,
+module.exports.disputeEscrow = async function(escrowId, body, actor) {
+  return updateEscrowStatus(escrowId, body || {}, actor, {
     nextStatus: 'disputed',
     timestampField: 'disputeOpenedAt',
     noteField: 'disputeReason',
-  })
-);
+  });
+};

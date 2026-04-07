@@ -1,19 +1,33 @@
-const { Role, User } = require('../schemas');
-const { hashPassword } = require('../lib/auth');
-const { isStrongPassword, passwordRuleMessage } = require('../schemas/validators');
-const {
-  asyncHandler,
-  buildPaginationMeta,
-  cleanObject,
-  parsePagination,
-  sendError,
-  sendSuccess,
-} = require('../lib/http');
+var schemas = require('../schemas');
+var authLib = require('../lib/auth');
+var validators = require('../schemas/validators');
+var httpLib = require('../lib/http');
 
-const sanitizeUser = (user, options = {}) => {
-  const { privateView = false } = options;
-  const data = user.toObject({ virtuals: true });
+var Role = schemas.Role;
+var User = schemas.User;
+var hashPassword = authLib.hashPassword;
+var isStrongPassword = validators.isStrongPassword;
+var passwordRuleMessage = validators.passwordRuleMessage;
+var buildPaginationMeta = httpLib.buildPaginationMeta;
+var cleanObject = httpLib.cleanObject;
+var parsePagination = httpLib.parsePagination;
+
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
+  }
+  return error;
+};
+
+var sanitizeUser = function(user, options) {
+  var config = options || {};
+  var privateView = Boolean(config.privateView);
+  var data = user.toObject({ virtuals: true });
+
   delete data.passwordHash;
+
   if (!privateView) {
     delete data.email;
     delete data.phone;
@@ -23,127 +37,167 @@ const sanitizeUser = (user, options = {}) => {
     delete data.status;
     delete data.lastLoginAt;
   }
+
   return data;
 };
 
-const canManageAsAdmin = (req) => (req.userRoles || []).includes('admin');
+var canManageAsAdmin = function(userRoles) {
+  return (userRoles || []).indexOf('admin') !== -1;
+};
 
-const applyUserUpdate = async (user, req, permissions) => {
-  const payload = cleanObject({
-    fullName: permissions.canEditProfile ? req.body.fullName : undefined,
-    phone: permissions.canEditProfile ? req.body.phone : undefined,
-    bio: permissions.canEditProfile ? req.body.bio : undefined,
-    avatarUrl: permissions.canEditProfile ? req.body.avatarUrl : undefined,
-    status: permissions.canModerate ? req.body.status : undefined,
-    isVerified: permissions.canModerate ? req.body.isVerified : undefined,
-    isActive: permissions.canModerate ? req.body.isActive : undefined,
+var normalizeRoleNames = function(roles) {
+  return (roles || [])
+    .map(function(role) {
+      return String(role || '').trim().toLowerCase();
+    })
+    .filter(function(role) {
+      return ['user', 'admin'].indexOf(role) !== -1;
+    });
+};
+
+var applyUserUpdate = async function(user, payload, permissions) {
+  var body = payload || {};
+  var patch = cleanObject({
+    fullName: permissions.canEditProfile ? body.fullName : undefined,
+    phone: permissions.canEditProfile ? body.phone : undefined,
+    bio: permissions.canEditProfile ? body.bio : undefined,
+    avatarUrl: permissions.canEditProfile ? body.avatarUrl : undefined,
+    status: permissions.canModerate ? body.status : undefined,
+    isVerified: permissions.canModerate ? body.isVerified : undefined,
+    isActive: permissions.canModerate ? body.isActive : undefined,
   });
+  var requestedRoles;
+  var roles;
 
-  if (permissions.canChangePassword && req.body.password) {
-    if (!isStrongPassword(req.body.password)) {
-      const error = new Error(passwordRuleMessage);
-      error.status = 400;
-      throw error;
+  if (permissions.canChangePassword && body.password) {
+    if (!isStrongPassword(body.password)) {
+      throw createControllerError(passwordRuleMessage, 400);
     }
-    payload.passwordHash = hashPassword(req.body.password);
+
+    patch.passwordHash = hashPassword(body.password);
   }
 
-  if (permissions.canManageRoles && Array.isArray(req.body.roles)) {
-    const requestedRoles = req.body.roles
-      .map((role) => `${role || ''}`.trim().toLowerCase())
-      .filter((role) => ['user', 'admin'].includes(role));
-    const roles = await Role.find({ name: { $in: requestedRoles } });
-    payload.roles = roles.map((role) => role._id);
+  if (permissions.canManageRoles && Array.isArray(body.roles)) {
+    requestedRoles = normalizeRoleNames(body.roles);
+    roles = await Role.find({ name: { $in: requestedRoles } });
+    patch.roles = roles.map(function(role) {
+      return role._id;
+    });
   }
 
-  Object.assign(user, payload);
+  Object.assign(user, patch);
   await user.save();
 
   return User.findById(user._id).populate('roles', 'name permissions');
 };
 
-exports.listUsers = asyncHandler(async (req, res) => {
-  const { page, limit, skip } = parsePagination(req.query);
-  const filter = {};
-  if (req.query.role) {
-    const role = await Role.findOne({ name: req.query.role });
+module.exports.listUsers = async function(query) {
+  var pagination = parsePagination(query || {});
+  var page = pagination.page;
+  var limit = pagination.limit;
+  var skip = pagination.skip;
+  var filter = {};
+  var role;
+  var results;
+  var users;
+  var total;
+
+  if (query && query.role) {
+    role = await Role.findOne({ name: query.role });
     filter.roles = role ? role._id : null;
   }
-  if (req.query.status) {
-    filter.status = req.query.status;
+  if (query && query.status) {
+    filter.status = query.status;
   }
 
-  const [users, total] = await Promise.all([
+  results = await Promise.all([
     User.find(filter).populate('roles', 'name permissions').skip(skip).limit(limit).sort({ createdAt: -1 }),
     User.countDocuments(filter),
   ]);
+  users = results[0];
+  total = results[1];
 
-  return sendSuccess(
-    res,
-    users.map((user) => sanitizeUser(user, { privateView: true })),
-    buildPaginationMeta(page, limit, total)
-  );
-});
+  return {
+    data: users.map(function(user) {
+      return sanitizeUser(user, { privateView: true });
+    }),
+    meta: buildPaginationMeta(page, limit, total),
+  };
+};
 
-exports.getCurrentProfile = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id).populate('roles', 'name permissions');
-  return sendSuccess(res, sanitizeUser(user, { privateView: true }));
-});
+module.exports.getCurrentProfile = async function(userId) {
+  var user = await User.findById(userId).populate('roles', 'name permissions');
 
-exports.updateCurrentProfile = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id);
   if (!user) {
-    return sendError(res, 'User not found', 404);
+    return null;
   }
 
-  const hydrated = await applyUserUpdate(user, req, {
+  return sanitizeUser(user, { privateView: true });
+};
+
+module.exports.updateCurrentProfile = async function(userId, body) {
+  var user = await User.findById(userId);
+  var hydrated;
+
+  if (!user) {
+    return null;
+  }
+
+  hydrated = await applyUserUpdate(user, body, {
     canEditProfile: true,
     canChangePassword: true,
     canModerate: false,
     canManageRoles: false,
   });
 
-  return sendSuccess(res, sanitizeUser(hydrated, { privateView: true }));
-});
+  return sanitizeUser(hydrated, { privateView: true });
+};
 
-exports.getUserById = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id).populate('roles', 'name permissions');
+module.exports.getUserById = async function(userId, viewer) {
+  var user = await User.findById(userId).populate('roles', 'name permissions');
+  var isSelf;
+  var privateView;
+
   if (!user) {
-    return sendError(res, 'User not found', 404);
+    return null;
   }
 
-  const isSelf = req.user && String(req.user._id) === req.params.id;
-  const privateView = isSelf || canManageAsAdmin(req);
-  return sendSuccess(res, sanitizeUser(user, { privateView }));
-});
+  isSelf = viewer && viewer.user && String(viewer.user._id) === String(userId);
+  privateView = isSelf || canManageAsAdmin(viewer && viewer.userRoles);
+  return sanitizeUser(user, { privateView: privateView });
+};
 
-exports.updateUser = asyncHandler(async (req, res) => {
-  const isSelf = String(req.user._id) === req.params.id;
-  const isAdmin = canManageAsAdmin(req);
+module.exports.updateUser = async function(userId, body, actor) {
+  var isSelf = actor && actor.user && String(actor.user._id) === String(userId);
+  var isAdmin = canManageAsAdmin(actor && actor.userRoles);
+  var user;
+  var hydrated;
+
   if (!isSelf && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
+    throw createControllerError('Forbidden', 403);
   }
 
-  const user = await User.findById(req.params.id);
+  user = await User.findById(userId);
   if (!user) {
-    return sendError(res, 'User not found', 404);
+    return null;
   }
 
-  const hydrated = await applyUserUpdate(user, req, {
+  hydrated = await applyUserUpdate(user, body, {
     canEditProfile: isSelf || isAdmin,
     canChangePassword: isSelf || isAdmin,
     canModerate: !isSelf && isAdmin,
     canManageRoles: isAdmin,
   });
 
-  return sendSuccess(res, sanitizeUser(hydrated, { privateView: true }));
-});
+  return sanitizeUser(hydrated, { privateView: true });
+};
 
-exports.deleteUser = asyncHandler(async (req, res) => {
-  const user = await User.findByIdAndDelete(req.params.id);
+module.exports.deleteUser = async function(userId) {
+  var user = await User.findByIdAndDelete(userId);
+
   if (!user) {
-    return sendError(res, 'User not found', 404);
+    return false;
   }
 
-  return sendSuccess(res, { deleted: true });
-});
+  return true;
+};

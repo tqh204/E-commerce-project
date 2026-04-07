@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+var mongoose = require('mongoose');
 
-const walletTransactionSchema = new mongoose.Schema(
+var walletTransactionSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
@@ -91,3 +91,4 @@ walletTransactionSchema.index({ auction: 1, createdAt: -1 });
 module.exports =
   mongoose.models.WalletTransaction ||
   mongoose.model('WalletTransaction', walletTransactionSchema);
+

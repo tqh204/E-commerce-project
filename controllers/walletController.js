@@ -1,110 +1,77 @@
-﻿const { User, WalletTransaction } = require('../schemas');
-const { asyncHandler, buildPaginationMeta, parsePagination, sendSuccess } = require('../lib/http');
-const { getAvailableBalance, topUpWallet } = require('../lib/wallet');
-const { createWalletTopUp, handleMomoCallback } = require('../lib/momo');
-const { createNotification } = require('../lib/notifications');
-const { isAdmin } = require('../middleware/auth');
+var schemas = require('../schemas');
+var walletLib = require('../lib/wallet');
+var momoLib = require('../lib/momo');
+var notificationLib = require('../lib/notifications');
 
-const requireAdmin = (req) => {
-  if (!isAdmin(req)) {
-    const error = new Error('Forbidden');
-    error.status = 403;
-    throw error;
+var User = schemas.User;
+var WalletTransaction = schemas.WalletTransaction;
+var buildPaginationMeta = require('../lib/http').buildPaginationMeta;
+var parsePagination = require('../lib/http').parsePagination;
+var getAvailableBalance = walletLib.getAvailableBalance;
+var topUpWallet = walletLib.topUpWallet;
+var createWalletTopUp = momoLib.createWalletTopUp;
+var handleMomoCallback = momoLib.handleMomoCallback;
+var createNotification = notificationLib.createNotification;
+
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
+  }
+  return error;
+};
+
+var requireAdmin = function(actor) {
+  if ((actor.userRoles || []).indexOf('admin') === -1) {
+    throw createControllerError('Forbidden', 403);
   }
 };
 
-exports.getWalletSummary = asyncHandler(async (req, res) => {
-  const user = req.user;
-  return sendSuccess(res, {
+var buildWalletSummary = function(user) {
+  return {
     balance: Number(user.balance || 0),
     lockedBalance: Number(user.lockedBalance || 0),
     availableBalance: getAvailableBalance(user),
-  });
-});
-
-exports.listWalletTransactions = asyncHandler(async (req, res) => {
-  const { page, limit, skip } = parsePagination(req.query);
-  const filter = { user: req.user._id };
-
-  const [items, total] = await Promise.all([
-    WalletTransaction.find(filter)
-      .populate('order', 'orderCode status totalAmount')
-      .populate('auction', 'status endAt buyNowPrice')
-      .populate('escrowTransaction', 'status amount autoReleaseAt')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    WalletTransaction.countDocuments(filter),
-  ]);
-
-  return sendSuccess(res, items, buildPaginationMeta(page, limit, total));
-});
-
-exports.topUpWallet = asyncHandler(async (req, res) => {
-  const amount = Number(req.body.amount || 0);
-  const user = await topUpWallet({
-    userId: req.user._id,
-    amount,
-    description: req.body.description || 'Manual wallet top up',
-    metadata: {
-      source: req.body.source || 'manual',
-      receiptCode: req.body.receiptCode || '',
-    },
-  });
-
-  return sendSuccess(res, {
-    balance: Number(user.balance || 0),
-    lockedBalance: Number(user.lockedBalance || 0),
-    availableBalance: getAvailableBalance(user),
-  });
-});
-
-exports.createMomoTopUp = asyncHandler(async (req, res) => {
-  const amount = Number(req.body.amount || 0);
-  if (!Number.isFinite(amount) || amount < 10000) {
-    const error = new Error('Minimum top up amount is 10,000 VND');
-    error.status = 400;
-    throw error;
-  }
-
-  const result = await createWalletTopUp({
-    userId: req.user._id,
-    amount,
-  });
-
-  return sendSuccess(res, {
-    payUrl: result.payUrl,
-    deeplink: result.deeplink,
-    orderId: result.orderId,
-    requestId: result.requestId,
-    momoResponse: result.response,
-  });
-});
-
-const extractCallbackPayload = (req) => {
-  if (req.method === 'GET') {
-    return req.query || {};
-  }
-  return req.body || {};
+  };
 };
 
-const creditMomoTopUpIfNeeded = async (payment) => {
+var extractCallbackPayload = function(request) {
+  if (request.method === 'GET') {
+    return request.query || {};
+  }
+  return request.body || {};
+};
+
+var buildRedirectUrl = function(baseUrl, status, orderId) {
+  var separator = baseUrl.indexOf('?') === -1 ? '?' : '&';
+  return baseUrl +
+    separator +
+    'status=' + encodeURIComponent(status) +
+    '&orderId=' + encodeURIComponent(orderId || '');
+};
+
+var creditMomoTopUpIfNeeded = async function(payment) {
+  var existing;
+  var user;
+
   if (!payment || payment.status !== 'success') {
     return null;
   }
 
-  const existing = await WalletTransaction.findOne({
+  existing = await WalletTransaction.findOne({
     'metadata.momoOrderId': payment.orderId,
     type: 'top_up',
   }).lean();
+
   if (existing) {
     return null;
   }
 
-  const user = await topUpWallet({
+  user = await topUpWallet({
     userId: payment.user,
     amount: payment.amount,
-    description: `MoMo wallet top up (${payment.orderId})`,
+    description: 'MoMo wallet top up (' + payment.orderId + ')',
     metadata: {
       source: 'momo',
       momoOrderId: payment.orderId,
@@ -115,64 +82,151 @@ const creditMomoTopUpIfNeeded = async (payment) => {
 
   await createNotification({
     userId: payment.user,
-    title: 'Nạp ví thành công',
-    message: `Bạn đã nạp ${Number(payment.amount).toLocaleString('vi-VN')} VND vào ví.`,
+    title: 'Nap vi thanh cong',
+    message: 'Ban da nap ' +
+      Number(payment.amount).toLocaleString('vi-VN') +
+      ' VND vao vi.',
     type: 'wallet_top_up',
     refType: 'wallet',
     refId: String(payment.orderId),
-    metadata: { momoOrderId: payment.orderId, momoTransId: payment.transId || '' },
+    metadata: {
+      momoOrderId: payment.orderId,
+      momoTransId: payment.transId || '',
+    },
   });
 
   return user;
 };
 
-exports.momoReturn = asyncHandler(async (req, res) => {
-  const payload = extractCallbackPayload(req);
-  const { payment, status } = await handleMomoCallback({ payload, source: 'return' });
-  await creditMomoTopUpIfNeeded(payment);
+module.exports.getWalletSummary = async function(user) {
+  return buildWalletSummary(user);
+};
 
-  const redirectBase = process.env.MOMO_RETURN_REDIRECT_URL || '';
-  if (redirectBase) {
-    const url = new URL(redirectBase);
-    url.searchParams.set('status', status);
-    url.searchParams.set('orderId', payment.orderId);
-    return res.redirect(url.toString());
+module.exports.listWalletTransactions = async function(userId, query) {
+  var pagination = parsePagination(query || {});
+  var page = pagination.page;
+  var limit = pagination.limit;
+  var skip = pagination.skip;
+  var filter = { user: userId };
+  var results = await Promise.all([
+    WalletTransaction.find(filter)
+      .populate('order', 'orderCode status totalAmount')
+      .populate('auction', 'status endAt buyNowPrice')
+      .populate('escrowTransaction', 'status amount autoReleaseAt')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    WalletTransaction.countDocuments(filter),
+  ]);
+
+  return {
+    data: results[0],
+    meta: buildPaginationMeta(page, limit, results[1]),
+  };
+};
+
+module.exports.topUpWallet = async function(body, user) {
+  var amount = Number(body.amount || 0);
+  var updatedUser = await topUpWallet({
+    userId: user._id,
+    amount: amount,
+    description: body.description || 'Manual wallet top up',
+    metadata: {
+      source: body.source || 'manual',
+      receiptCode: body.receiptCode || '',
+    },
+  });
+
+  return buildWalletSummary(updatedUser);
+};
+
+module.exports.createMomoTopUp = async function(body, user) {
+  var amount = Number(body.amount || 0);
+  var result;
+
+  if (!Number.isFinite(amount) || amount < 10000) {
+    throw createControllerError('Minimum top up amount is 10,000 VND', 400);
   }
 
-  return sendSuccess(res, {
-    status,
-    orderId: payment.orderId,
-    resultCode: payment.resultCode,
+  result = await createWalletTopUp({
+    userId: user._id,
+    amount: amount,
   });
-});
 
-exports.momoIpn = asyncHandler(async (req, res) => {
-  const payload = extractCallbackPayload(req);
-  const { payment, status } = await handleMomoCallback({ payload, source: 'ipn' });
+  return {
+    payUrl: result.payUrl,
+    deeplink: result.deeplink,
+    orderId: result.orderId,
+    requestId: result.requestId,
+    momoResponse: result.response,
+  };
+};
+
+module.exports.momoReturn = async function(request) {
+  var payload = extractCallbackPayload(request);
+  var callbackResult = await handleMomoCallback({ payload: payload, source: 'return' });
+  var payment = callbackResult.payment;
+  var status = callbackResult.status;
+  var redirectBase = process.env.MOMO_RETURN_REDIRECT_URL || '';
+
   await creditMomoTopUpIfNeeded(payment);
 
-  return res.json({
+  return {
+    redirectUrl: redirectBase ? buildRedirectUrl(redirectBase, status, payment.orderId) : '',
+    data: {
+      status: status,
+      orderId: payment.orderId,
+      resultCode: payment.resultCode,
+    },
+  };
+};
+
+module.exports.momoIpn = async function(request) {
+  var payload = extractCallbackPayload(request);
+  var callbackResult = await handleMomoCallback({ payload: payload, source: 'ipn' });
+  var payment = callbackResult.payment;
+  var status = callbackResult.status;
+
+  await creditMomoTopUpIfNeeded(payment);
+
+  return {
     resultCode: 0,
     message: status === 'success' ? 'Success' : 'Processed',
-  });
-});
+  };
+};
 
-exports.listWalletUsers = asyncHandler(async (req, res) => {
-  requireAdmin(req);
-  const { page, limit, skip } = parsePagination(req.query);
-  const query = String(req.query.q || '').trim();
+module.exports.listWalletUsers = async function(query, actor) {
+  var pagination;
+  var page;
+  var limit;
+  var skip;
+  var search;
+  var filter;
+  var results;
+  var items;
+  var total;
+  var data;
 
-  const filter = query
-    ? {
-        $or: [
-          { username: { $regex: query, $options: 'i' } },
-          { email: { $regex: query, $options: 'i' } },
-          { fullName: { $regex: query, $options: 'i' } },
-        ],
-      }
-    : {};
+  requireAdmin(actor);
 
-  const [items, total] = await Promise.all([
+  pagination = parsePagination(query || {});
+  page = pagination.page;
+  limit = pagination.limit;
+  skip = pagination.skip;
+  search = String((query && query.q) || '').trim();
+  filter = {};
+
+  if (search) {
+    filter = {
+      $or: [
+        { username: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { fullName: { $regex: search, $options: 'i' } },
+      ],
+    };
+  }
+
+  results = await Promise.all([
     User.find(filter)
       .populate('roles', 'name')
       .sort({ createdAt: -1 })
@@ -180,36 +234,53 @@ exports.listWalletUsers = asyncHandler(async (req, res) => {
       .limit(limit),
     User.countDocuments(filter),
   ]);
+  items = results[0];
+  total = results[1];
 
-  const data = items.map((user) => ({
-    _id: user._id,
-    username: user.username,
-    email: user.email,
-    fullName: user.fullName,
-    phone: user.phone,
-    roles: user.roles,
-    balance: Number(user.balance || 0),
-    lockedBalance: Number(user.lockedBalance || 0),
-    availableBalance: getAvailableBalance(user),
-    isActive: Boolean(user.isActive),
-    isVerified: Boolean(user.isVerified),
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-  }));
+  data = items.map(function(user) {
+    return {
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      fullName: user.fullName,
+      phone: user.phone,
+      roles: user.roles,
+      balance: Number(user.balance || 0),
+      lockedBalance: Number(user.lockedBalance || 0),
+      availableBalance: getAvailableBalance(user),
+      isActive: Boolean(user.isActive),
+      isVerified: Boolean(user.isVerified),
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  });
 
-  return sendSuccess(res, data, buildPaginationMeta(page, limit, total));
-});
+  return {
+    data: data,
+    meta: buildPaginationMeta(page, limit, total),
+  };
+};
 
-exports.listAllWalletTransactions = asyncHandler(async (req, res) => {
-  requireAdmin(req);
-  const { page, limit, skip } = parsePagination(req.query);
-  const filter = {};
+module.exports.listAllWalletTransactions = async function(query, actor) {
+  var pagination;
+  var page;
+  var limit;
+  var skip;
+  var filter = {};
+  var results;
 
-  if (req.query.userId) {
-    filter.user = req.query.userId;
+  requireAdmin(actor);
+
+  pagination = parsePagination(query || {});
+  page = pagination.page;
+  limit = pagination.limit;
+  skip = pagination.skip;
+
+  if (query && query.userId) {
+    filter.user = query.userId;
   }
 
-  const [items, total] = await Promise.all([
+  results = await Promise.all([
     WalletTransaction.find(filter)
       .populate('user', 'fullName username email balance lockedBalance')
       .populate('order', 'orderCode status totalAmount')
@@ -221,34 +292,40 @@ exports.listAllWalletTransactions = asyncHandler(async (req, res) => {
     WalletTransaction.countDocuments(filter),
   ]);
 
-  return sendSuccess(res, items, buildPaginationMeta(page, limit, total));
-});
+  return {
+    data: results[0],
+    meta: buildPaginationMeta(page, limit, results[1]),
+  };
+};
 
-exports.adminTopUpWallet = asyncHandler(async (req, res) => {
-  requireAdmin(req);
-  const userId = req.body.userId;
+module.exports.adminTopUpWallet = async function(body, actor) {
+  var userId;
+  var amount;
+  var user;
+
+  requireAdmin(actor);
+
+  userId = body.userId;
   if (!userId) {
-    const error = new Error('userId is required');
-    error.status = 400;
-    throw error;
+    throw createControllerError('userId is required', 400);
   }
 
-  const amount = Number(req.body.amount || 0);
-  const user = await topUpWallet({
-    userId,
-    amount,
-    description: req.body.description || 'Admin top up',
+  amount = Number(body.amount || 0);
+  user = await topUpWallet({
+    userId: userId,
+    amount: amount,
+    description: body.description || 'Admin top up',
     metadata: {
       source: 'admin',
-      adminUserId: req.user._id,
-      receiptCode: req.body.receiptCode || '',
+      adminUserId: actor.user && actor.user._id,
+      receiptCode: body.receiptCode || '',
     },
   });
 
-  return sendSuccess(res, {
+  return {
     _id: user._id,
     balance: Number(user.balance || 0),
     lockedBalance: Number(user.lockedBalance || 0),
     availableBalance: getAvailableBalance(user),
-  });
-});
+  };
+};

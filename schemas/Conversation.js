@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+var mongoose = require('mongoose');
 
-const conversationSchema = new mongoose.Schema(
+var conversationSchema = new mongoose.Schema(
   {
     participants: {
       type: [
@@ -84,3 +84,4 @@ conversationSchema.index({ product: 1, type: 1 });
 
 module.exports =
   mongoose.models.Conversation || mongoose.model('Conversation', conversationSchema);
+

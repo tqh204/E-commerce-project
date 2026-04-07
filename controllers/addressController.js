@@ -1,13 +1,33 @@
-const { Address, User } = require('../schemas');
-const { asyncHandler, cleanObject, sendError, sendSuccess } = require('../lib/http');
+var schemas = require('../schemas');
+var httpLib = require('../lib/http');
 
-const normalizeLocation = (payload = {}) => {
-  const coordinates = payload?.coordinates;
+var Address = schemas.Address;
+var User = schemas.User;
+var cleanObject = httpLib.cleanObject;
+
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
+  }
+  return error;
+};
+
+var normalizeLocation = function(payload) {
+  var locationPayload = payload || {};
+  var coordinates = locationPayload.coordinates;
+  var normalizedCoordinates;
+  var lng;
+  var lat;
+
   if (!Array.isArray(coordinates) || coordinates.length !== 2) {
     return undefined;
   }
 
-  const [lng, lat] = coordinates.map(Number);
+  normalizedCoordinates = coordinates.map(Number);
+  lng = normalizedCoordinates[0];
+  lat = normalizedCoordinates[1];
   if (Number.isNaN(lng) || Number.isNaN(lat)) {
     return undefined;
   }
@@ -18,18 +38,19 @@ const normalizeLocation = (payload = {}) => {
   };
 };
 
-const unsetOtherDefaults = async (userId, currentId) => {
+var unsetOtherDefaults = async function(userId, currentId) {
   await Address.updateMany(
     { user: userId, _id: { $ne: currentId } },
     { $set: { isDefault: false } }
   );
 };
 
-const syncDefaultAddress = async (userId, preferredAddressId = null) => {
-  let defaultAddress = null;
+var syncDefaultAddress = async function(userId, preferredAddressId) {
+  var targetAddressId = preferredAddressId === undefined ? null : preferredAddressId;
+  var defaultAddress = null;
 
-  if (preferredAddressId) {
-    defaultAddress = await Address.findOne({ _id: preferredAddressId, user: userId });
+  if (targetAddressId) {
+    defaultAddress = await Address.findOne({ _id: targetAddressId, user: userId });
   }
 
   if (!defaultAddress) {
@@ -55,96 +76,102 @@ const syncDefaultAddress = async (userId, preferredAddressId = null) => {
   return defaultAddress;
 };
 
-exports.listAddresses = asyncHandler(async (req, res) => {
-  const filter = (req.userRoles || []).includes('admin') && req.query.userId
-    ? { user: req.query.userId }
-    : { user: req.user._id };
-  const addresses = await Address.find(filter).sort({ isDefault: -1, createdAt: -1 });
-  return sendSuccess(res, addresses);
-});
+var canManageAddress = function(address, actor) {
+  return String(address.user) === String(actor.user && actor.user._id) ||
+    (actor.userRoles || []).indexOf('admin') !== -1;
+};
 
-exports.getAddressById = asyncHandler(async (req, res) => {
-  const address = await Address.findById(req.params.id);
+module.exports.listAddresses = async function(actor, query) {
+  var filter = (actor.userRoles || []).indexOf('admin') !== -1 && query && query.userId
+    ? { user: query.userId }
+    : { user: actor.user._id };
+
+  return Address.find(filter).sort({ isDefault: -1, createdAt: -1 });
+};
+
+module.exports.getAddressById = async function(addressId, actor) {
+  var address = await Address.findById(addressId);
+
   if (!address) {
-    return sendError(res, 'Address not found', 404);
+    return null;
+  }
+  if (!canManageAddress(address, actor)) {
+    throw createControllerError('Forbidden', 403);
   }
 
-  const isOwner = String(address.user) === String(req.user._id);
-  const isAdmin = (req.userRoles || []).includes('admin');
-  if (!isOwner && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
+  return address;
+};
+
+module.exports.createAddress = async function(body, actor) {
+  var isAdmin = (actor.userRoles || []).indexOf('admin') !== -1;
+  var userId;
+  var address;
+  var owner;
+
+  if (body.userId && !isAdmin) {
+    throw createControllerError('Forbidden', 403);
   }
 
-  return sendSuccess(res, address);
-});
-
-exports.createAddress = asyncHandler(async (req, res) => {
-  const isAdmin = (req.userRoles || []).includes('admin');
-  if (req.body.userId && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
-  }
-
-  const userId = req.body.userId || req.user._id;
-  const address = await Address.create({
+  userId = body.userId || actor.user._id;
+  address = await Address.create({
     user: userId,
-    label: req.body.label,
-    fullName: req.body.fullName,
-    phone: req.body.phone,
-    countryCode: req.body.countryCode,
-    country: req.body.country,
-    province: req.body.province,
-    district: req.body.district,
-    ward: req.body.ward,
-    street: req.body.street,
-    fullAddress: req.body.fullAddress,
-    postalCode: req.body.postalCode,
-    location: normalizeLocation(req.body.location),
-    isDefault: req.body.isDefault,
-    notes: req.body.notes,
+    label: body.label,
+    fullName: body.fullName,
+    phone: body.phone,
+    countryCode: body.countryCode,
+    country: body.country,
+    province: body.province,
+    district: body.district,
+    ward: body.ward,
+    street: body.street,
+    fullAddress: body.fullAddress,
+    postalCode: body.postalCode,
+    location: normalizeLocation(body.location),
+    isDefault: body.isDefault,
+    notes: body.notes,
   });
 
   if (address.isDefault) {
     await syncDefaultAddress(address.user, address._id);
   } else {
-    const owner = await User.findById(address.user).select('defaultAddress');
-    if (!owner?.defaultAddress) {
+    owner = await User.findById(address.user).select('defaultAddress');
+    if (!owner || !owner.defaultAddress) {
       await syncDefaultAddress(address.user, address._id);
     }
   }
 
-  const hydratedAddress = await Address.findById(address._id);
-  return sendSuccess(res, hydratedAddress, null, 201);
-});
+  return Address.findById(address._id);
+};
 
-exports.updateAddress = asyncHandler(async (req, res) => {
-  const address = await Address.findById(req.params.id);
+module.exports.updateAddress = async function(addressId, body, actor) {
+  var address = await Address.findById(addressId);
+  var patch;
+  var owner;
+
   if (!address) {
-    return sendError(res, 'Address not found', 404);
+    return null;
+  }
+  if (!canManageAddress(address, actor)) {
+    throw createControllerError('Forbidden', 403);
   }
 
-  const isOwner = String(address.user) === String(req.user._id);
-  const isAdmin = (req.userRoles || []).includes('admin');
-  if (!isOwner && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
-  }
-
-  const patch = cleanObject({
-    label: req.body.label,
-    fullName: req.body.fullName,
-    phone: req.body.phone,
-    countryCode: req.body.countryCode,
-    country: req.body.country,
-    province: req.body.province,
-    district: req.body.district,
-    ward: req.body.ward,
-    street: req.body.street,
-    fullAddress: req.body.fullAddress,
-    postalCode: req.body.postalCode,
-    isDefault: req.body.isDefault,
-    notes: req.body.notes,
+  patch = cleanObject({
+    label: body.label,
+    fullName: body.fullName,
+    phone: body.phone,
+    countryCode: body.countryCode,
+    country: body.country,
+    province: body.province,
+    district: body.district,
+    ward: body.ward,
+    street: body.street,
+    fullAddress: body.fullAddress,
+    postalCode: body.postalCode,
+    isDefault: body.isDefault,
+    notes: body.notes,
   });
-  if (Object.prototype.hasOwnProperty.call(req.body, 'location')) {
-    patch.location = normalizeLocation(req.body.location) || null;
+  if (Object.prototype.hasOwnProperty.call(body, 'location')) {
+    patch.location = normalizeLocation(body.location) || null;
   }
 
   Object.assign(address, patch);
@@ -153,32 +180,31 @@ exports.updateAddress = asyncHandler(async (req, res) => {
   if (address.isDefault) {
     await syncDefaultAddress(address.user, address._id);
   } else {
-    const owner = await User.findById(address.user).select('defaultAddress');
-    if (owner?.defaultAddress && String(owner.defaultAddress) === String(address._id)) {
+    owner = await User.findById(address.user).select('defaultAddress');
+    if (owner && owner.defaultAddress && String(owner.defaultAddress) === String(address._id)) {
       await syncDefaultAddress(address.user);
     }
   }
 
-  const hydratedAddress = await Address.findById(address._id);
-  return sendSuccess(res, hydratedAddress);
-});
+  return Address.findById(address._id);
+};
 
-exports.deleteAddress = asyncHandler(async (req, res) => {
-  const address = await Address.findById(req.params.id);
+module.exports.deleteAddress = async function(addressId, actor) {
+  var address = await Address.findById(addressId);
+  var owner;
+
   if (!address) {
-    return sendError(res, 'Address not found', 404);
+    return false;
   }
-
-  const isOwner = String(address.user) === String(req.user._id);
-  const isAdmin = (req.userRoles || []).includes('admin');
-  if (!isOwner && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
+  if (!canManageAddress(address, actor)) {
+    throw createControllerError('Forbidden', 403);
   }
 
   await address.deleteOne();
-  const owner = await User.findById(address.user).select('defaultAddress');
-  if (owner?.defaultAddress && String(owner.defaultAddress) === String(address._id)) {
+  owner = await User.findById(address.user).select('defaultAddress');
+  if (owner && owner.defaultAddress && String(owner.defaultAddress) === String(address._id)) {
     await syncDefaultAddress(address.user);
   }
-  return sendSuccess(res, { deleted: true });
-});
+
+  return true;
+};

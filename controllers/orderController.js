@@ -1,56 +1,115 @@
-const { EscrowTransaction, Order, OrderItem, Product } = require('../schemas');
-const { createNotification } = require('../lib/notifications');
-const { ensureSufficientAvailableBalance, getAvailableBalance } = require('../lib/wallet');
-const {
-  ensureEscrowRecord,
-  holdEscrowForOrder,
-  refundEscrowToBuyer,
-  releaseEscrowToSeller,
-  scheduleEscrowAutoRelease,
-} = require('../lib/escrowService');
-const {
-  asyncHandler,
-  buildPaginationMeta,
-  parsePagination,
-  sendError,
-  sendSuccess,
-} = require('../lib/http');
+var schemas = require('../schemas');
+var notificationLib = require('../lib/notifications');
+var walletLib = require('../lib/wallet');
+var escrowService = require('../lib/escrowService');
+var httpLib = require('../lib/http');
 
-const getRelatedUserId = (value) => value?._id || value;
+var EscrowTransaction = schemas.EscrowTransaction;
+var Order = schemas.Order;
+var OrderItem = schemas.OrderItem;
+var Product = schemas.Product;
+var createNotification = notificationLib.createNotification;
+var ensureSufficientAvailableBalance = walletLib.ensureSufficientAvailableBalance;
+var getAvailableBalance = walletLib.getAvailableBalance;
+var ensureEscrowRecord = escrowService.ensureEscrowRecord;
+var holdEscrowForOrder = escrowService.holdEscrowForOrder;
+var refundEscrowToBuyer = escrowService.refundEscrowToBuyer;
+var releaseEscrowToSeller = escrowService.releaseEscrowToSeller;
+var scheduleEscrowAutoRelease = escrowService.scheduleEscrowAutoRelease;
+var buildPaginationMeta = httpLib.buildPaginationMeta;
+var parsePagination = httpLib.parsePagination;
 
-const canAccessOrder = (order, req) =>
-  (req.userRoles || []).includes('admin') ||
-  String(getRelatedUserId(order.buyer)) === String(req.user._id) ||
-  String(getRelatedUserId(order.seller)) === String(req.user._id);
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
+  }
+  return error;
+};
 
-const normalizeShippingAddress = (payload = {}) => ({
-  fullName: String(payload.fullName || '').trim(),
-  phone: String(payload.phone || '').trim(),
-  province: String(payload.province || '').trim(),
-  district: String(payload.district || '').trim(),
-  ward: String(payload.ward || '').trim(),
-  address: String(payload.address || payload.fullAddress || payload.street || '').trim(),
-  city: String(payload.city || payload.province || '').trim(),
-  zipCode: String(payload.zipCode || payload.postalCode || '').trim(),
-});
+var getRelatedUserId = function(value) {
+  if (value && value._id) {
+    return value._id;
+  }
+  return value;
+};
 
-const loadOrderEscrow = async (order) => {
-  if (!order?.escrowTransaction) return null;
+var arrayContains = function(list, value) {
+  return Array.isArray(list) && list.indexOf(value) !== -1;
+};
+
+var canAccessOrder = function(order, actor) {
+  return arrayContains(actor.userRoles || [], 'admin') ||
+    String(getRelatedUserId(order.buyer)) === String(actor.user && actor.user._id) ||
+    String(getRelatedUserId(order.seller)) === String(actor.user && actor.user._id);
+};
+
+var normalizeShippingAddress = function(payload) {
+  var data = payload || {};
+
+  return {
+    fullName: String(data.fullName || '').trim(),
+    phone: String(data.phone || '').trim(),
+    province: String(data.province || '').trim(),
+    district: String(data.district || '').trim(),
+    ward: String(data.ward || '').trim(),
+    address: String(data.address || data.fullAddress || data.street || '').trim(),
+    city: String(data.city || data.province || '').trim(),
+    zipCode: String(data.zipCode || data.postalCode || '').trim(),
+  };
+};
+
+var loadOrderEscrow = async function(order) {
+  if (!order || !order.escrowTransaction) {
+    return null;
+  }
   return EscrowTransaction.findById(order.escrowTransaction);
 };
 
-exports.listOrders = asyncHandler(async (req, res) => {
-  const { page, limit, skip } = parsePagination(req.query);
-  const filter = {};
-  const canViewAll = (req.userRoles || []).includes('admin') && req.query.scope === 'all';
-  if (!canViewAll) {
-    filter.$or = [{ buyer: req.user._id }, { seller: req.user._id }];
-  }
-  if (req.query.status) {
-    filter.status = req.query.status;
+var mergePlainObject = function(baseValue, patchValue) {
+  var base = {};
+  var patch = patchValue || {};
+  var key;
+
+  if (baseValue) {
+    if (typeof baseValue.toObject === 'function') {
+      base = baseValue.toObject();
+    } else {
+      base = baseValue;
+    }
   }
 
-  const [orders, total] = await Promise.all([
+  for (key in patch) {
+    if (Object.prototype.hasOwnProperty.call(patch, key)) {
+      base[key] = patch[key];
+    }
+  }
+
+  return base;
+};
+
+var buildAvailableBalanceMessage = function(user) {
+  return 'Insufficient wallet balance. Available: ' + getAvailableBalance(user);
+};
+
+module.exports.listOrders = async function(query, actor) {
+  var pagination = parsePagination(query || {});
+  var page = pagination.page;
+  var limit = pagination.limit;
+  var skip = pagination.skip;
+  var filter = {};
+  var canViewAll = arrayContains(actor.userRoles || [], 'admin') && query && query.scope === 'all';
+  var results;
+
+  if (!canViewAll) {
+    filter.$or = [{ buyer: actor.user._id }, { seller: actor.user._id }];
+  }
+  if (query && query.status) {
+    filter.status = query.status;
+  }
+
+  results = await Promise.all([
     Order.find(filter)
       .populate('buyer', 'username fullName')
       .populate('seller', 'username fullName')
@@ -62,103 +121,117 @@ exports.listOrders = asyncHandler(async (req, res) => {
     Order.countDocuments(filter),
   ]);
 
-  return sendSuccess(res, orders, buildPaginationMeta(page, limit, total));
-});
+  return {
+    data: results[0],
+    meta: buildPaginationMeta(page, limit, results[1]),
+  };
+};
 
-exports.getOrderById = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id)
+module.exports.getOrderById = async function(orderId, actor) {
+  var order = await Order.findById(orderId)
     .populate('buyer', 'username fullName')
     .populate('seller', 'username fullName')
     .populate('product', 'title price thumbnailImage')
     .populate('escrowTransaction');
+  var items;
 
   if (!order) {
-    return sendError(res, 'Order not found', 404);
+    return null;
   }
-  if (!canAccessOrder(order, req)) {
-    return sendError(res, 'Forbidden', 403);
+  if (!canAccessOrder(order, actor)) {
+    throw createControllerError('Forbidden', 403);
   }
 
-  const items = await OrderItem.find({ order: order._id });
-  return sendSuccess(res, { order, items });
-});
+  items = await OrderItem.find({ order: order._id });
+  return { order: order, items: items };
+};
 
-exports.createOrder = asyncHandler(async (req, res) => {
-  const { productId, quantity = 1, paymentType = 'cod', shippingMethod = 'delivery' } = req.body;
-  const product = await Product.findById(productId);
+module.exports.createOrder = async function(body, actor) {
+  var productId = body.productId;
+  var quantity = body.quantity === undefined ? 1 : body.quantity;
+  var paymentType = body.paymentType || 'cod';
+  var shippingMethod = body.shippingMethod || 'delivery';
+  var product = await Product.findById(productId);
+  var purchasePrice;
+  var shippingAddress;
+  var subtotal;
+  var shippingFee;
+  var platformFee;
+  var totalAmount;
+  var order;
+  var orderItem;
+  var escrowTransaction = null;
+
   if (!product) {
-    return sendError(res, 'Product not found', 404);
+    throw createControllerError('Product not found', 404);
   }
   if (product.status !== 'active') {
-    return sendError(res, 'Product is not available for ordering', 400);
+    throw createControllerError('Product is not available for ordering', 400);
   }
-  if (String(product.seller) === String(req.user._id)) {
-    return sendError(res, 'Cannot order your own product', 400);
+  if (String(product.seller) === String(actor.user._id)) {
+    throw createControllerError('Cannot order your own product', 400);
   }
 
-  const purchasePrice = Number(product.buyNowPrice || product.price || 0);
+  purchasePrice = Number(product.buyNowPrice || product.price || 0);
   if (purchasePrice <= 0) {
-    return sendError(res, 'Product does not support buy-now ordering', 400);
+    throw createControllerError('Product does not support buy-now ordering', 400);
   }
 
-  const shippingAddress = normalizeShippingAddress(req.body.shippingAddress);
-  if (!shippingAddress.fullName || !shippingAddress.phone || !shippingAddress.province || !shippingAddress.district || !shippingAddress.address) {
-    return sendError(res, 'Shipping address is required', 400);
+  shippingAddress = normalizeShippingAddress(body.shippingAddress);
+  if (!shippingAddress.fullName || !shippingAddress.phone || !shippingAddress.province ||
+    !shippingAddress.district || !shippingAddress.address) {
+    throw createControllerError('Shipping address is required', 400);
   }
 
-  const subtotal = purchasePrice * Number(quantity || 1);
-  const shippingFee = Number(req.body.shippingFee || 0);
-  const platformFee = Number(req.body.platformFee || 0);
-  const totalAmount = subtotal + shippingFee + platformFee;
+  subtotal = purchasePrice * Number(quantity || 1);
+  shippingFee = Number(body.shippingFee || 0);
+  platformFee = Number(body.platformFee || 0);
+  totalAmount = subtotal + shippingFee + platformFee;
 
   if (paymentType === 'wallet') {
-    ensureSufficientAvailableBalance(
-      req.user,
-      totalAmount,
-      `Insufficient wallet balance. Available: ${getAvailableBalance(req.user)}`
-    );
+    ensureSufficientAvailableBalance(actor.user, totalAmount, buildAvailableBalanceMessage(actor.user));
   }
 
-  const order = await Order.create({
-    buyer: req.user._id,
+  order = await Order.create({
+    buyer: actor.user._id,
     seller: product.seller,
     product: product._id,
-    auction: req.body.auctionId,
-    type: req.body.type || 'buy_now',
-    paymentType,
-    shippingMethod,
+    auction: body.auctionId,
+    type: body.type || 'buy_now',
+    paymentType: paymentType,
+    shippingMethod: shippingMethod,
     price: purchasePrice,
-    quantity,
-    subtotal,
-    shippingFee,
-    platformFee,
-    totalAmount,
-    shippingAddressRef: req.body.shippingAddressId,
-    shippingAddress,
+    quantity: quantity,
+    subtotal: subtotal,
+    shippingFee: shippingFee,
+    platformFee: platformFee,
+    totalAmount: totalAmount,
+    shippingAddressRef: body.shippingAddressId,
+    shippingAddress: shippingAddress,
     shipping: {
       method: shippingMethod,
-      carrier: req.body.carrier,
-      shippingFee,
-      trackingNumber: req.body.trackingNumber,
-      status: req.body.shippingStatus || 'pending',
+      carrier: body.carrier,
+      shippingFee: shippingFee,
+      trackingNumber: body.trackingNumber,
+      status: body.shippingStatus || 'pending',
     },
-    status: req.body.status || 'negotiating',
-    notes: req.body.notes,
-    buyerNotes: req.body.buyerNotes,
+    status: body.status || 'negotiating',
+    notes: body.notes,
+    buyerNotes: body.buyerNotes,
   });
 
-  const orderItem = await OrderItem.create({
+  orderItem = await OrderItem.create({
     order: order._id,
     product: product._id,
     seller: product.seller,
     titleSnapshot: product.title,
     priceSnapshot: purchasePrice,
-    quantity,
+    quantity: quantity,
     total: subtotal,
-    primaryImage: product.thumbnailImage || product.images?.[0] || null,
+    primaryImage: product.thumbnailImage ||
+      (Array.isArray(product.images) && product.images.length ? product.images[0] : null),
   });
 
-  let escrowTransaction = null;
   if (paymentType === 'escrow' || paymentType === 'wallet') {
     escrowTransaction = await ensureEscrowRecord(order, {
       amount: totalAmount,
@@ -171,8 +244,8 @@ exports.createOrder = asyncHandler(async (req, res) => {
   await Promise.all([
     createNotification({
       userId: order.buyer,
-      title: 'Đơn hàng mới',
-      message: `Bạn đã tạo đơn hàng ${order.orderCode}.`,
+      title: 'Don hang moi',
+      message: 'Ban da tao don hang ' + order.orderCode + '.',
       type: 'order_created',
       refType: 'order',
       refId: String(order._id),
@@ -180,8 +253,8 @@ exports.createOrder = asyncHandler(async (req, res) => {
     }),
     createNotification({
       userId: order.seller,
-      title: 'Có đơn hàng mới',
-      message: `Bạn nhận được đơn hàng ${order.orderCode}.`,
+      title: 'Co don hang moi',
+      message: 'Ban nhan duoc don hang ' + order.orderCode + '.',
       type: 'order_created',
       refType: 'order',
       refId: String(order._id),
@@ -189,65 +262,88 @@ exports.createOrder = asyncHandler(async (req, res) => {
     }),
   ]);
 
-  return sendSuccess(res, { order, orderItem, escrowTransaction }, null, 201);
-});
+  return { order: order, orderItem: orderItem, escrowTransaction: escrowTransaction };
+};
 
-exports.updateOrderStatus = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id);
+module.exports.updateOrderStatus = async function(orderId, body, actor) {
+  var order = await Order.findById(orderId);
+  var nextStatus;
+  var isAdmin;
+  var isBuyer;
+  var isSeller;
+  var buyerAllowed;
+  var sellerAllowed;
+  var previousStatus;
+  var escrow;
+  var statusLabel;
+
   if (!order) {
-    return sendError(res, 'Order not found', 404);
+    return null;
   }
-  if (!canAccessOrder(order, req)) {
-    return sendError(res, 'Forbidden', 403);
+  if (!canAccessOrder(order, actor)) {
+    throw createControllerError('Forbidden', 403);
   }
 
-  const nextStatus = req.body.status || order.status;
-  const isAdmin = (req.userRoles || []).includes('admin');
-  const isBuyer = String(order.buyer) === String(req.user._id);
-  const isSeller = String(order.seller) === String(req.user._id);
+  nextStatus = body.status || order.status;
+  isAdmin = arrayContains(actor.userRoles || [], 'admin');
+  isBuyer = String(order.buyer) === String(actor.user._id);
+  isSeller = String(order.seller) === String(actor.user._id);
 
   if (!isAdmin) {
-    const buyerAllowed = new Set(['cancelled', 'completed']);
-    const sellerAllowed = new Set(['processing', 'shipping', 'delivered', 'cancelled']);
+    buyerAllowed = ['cancelled', 'completed'];
+    sellerAllowed = ['processing', 'shipping', 'delivered', 'cancelled'];
+
     if (nextStatus !== order.status) {
-      if (isBuyer && !buyerAllowed.has(nextStatus)) {
-        return sendError(res, 'Buyer cannot update to this order status', 403);
+      if (isBuyer && !arrayContains(buyerAllowed, nextStatus)) {
+        throw createControllerError('Buyer cannot update to this order status', 403);
       }
-      if (isSeller && !sellerAllowed.has(nextStatus)) {
-        return sendError(res, 'Seller cannot update to this order status', 403);
+      if (isSeller && !arrayContains(sellerAllowed, nextStatus)) {
+        throw createControllerError('Seller cannot update to this order status', 403);
       }
     }
   }
 
-  const previousStatus = order.status;
+  previousStatus = order.status;
   order.status = nextStatus;
-  if (req.body.shippingMethod) {
-    order.shippingMethod = req.body.shippingMethod;
-    order.shipping.method = req.body.shippingMethod;
-  }
-  if (req.body.shippingAddressId !== undefined) {
-    order.shippingAddressRef = req.body.shippingAddressId || null;
-  }
-  if (req.body.shippingAddress) {
-    order.shippingAddress = {
-      ...order.shippingAddress.toObject(),
-      ...normalizeShippingAddress(req.body.shippingAddress),
-    };
-  }
-  if (req.body.shipping) {
-    order.shipping = { ...order.shipping.toObject(), ...req.body.shipping };
-  }
-  if (req.body.notes !== undefined) order.notes = req.body.notes;
-  if (req.body.buyerNotes !== undefined) order.buyerNotes = req.body.buyerNotes;
-  if (req.body.sellerNotes !== undefined) order.sellerNotes = req.body.sellerNotes;
 
-  let escrow = await loadOrderEscrow(order);
+  if (body.shippingMethod) {
+    order.shippingMethod = body.shippingMethod;
+    order.shipping.method = body.shippingMethod;
+  }
+  if (body.shippingAddressId !== undefined) {
+    order.shippingAddressRef = body.shippingAddressId || null;
+  }
+  if (body.shippingAddress) {
+    order.shippingAddress = mergePlainObject(
+      order.shippingAddress,
+      normalizeShippingAddress(body.shippingAddress)
+    );
+  }
+  if (body.shipping) {
+    order.shipping = mergePlainObject(order.shipping, body.shipping);
+  }
+  if (body.notes !== undefined) {
+    order.notes = body.notes;
+  }
+  if (body.buyerNotes !== undefined) {
+    order.buyerNotes = body.buyerNotes;
+  }
+  if (body.sellerNotes !== undefined) {
+    order.sellerNotes = body.sellerNotes;
+  }
+
+  escrow = await loadOrderEscrow(order);
 
   if (order.status === 'processing') {
     order.sellerConfirmedAt = order.sellerConfirmedAt || new Date();
     if (!order.paidAt && (order.paymentType === 'wallet' || order.paymentType === 'escrow')) {
       escrow = await holdEscrowForOrder(order, {
-        flowType: order.type === 'auction_win' ? 'auction_win' : order.type === 'auction_buy_now' ? 'auction_buy_now' : 'direct_purchase',
+        flowType:
+          order.type === 'auction_win'
+            ? 'auction_win'
+            : order.type === 'auction_buy_now'
+              ? 'auction_buy_now'
+              : 'direct_purchase',
         description: 'Funds moved from buyer wallet into escrow after seller confirmation',
       });
       order.paidAt = order.paidAt || new Date();
@@ -265,13 +361,13 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
     order.deliveredAt = order.deliveredAt || new Date();
     order.shipping.status = 'delivered';
     order.shipping.deliveredAt = order.shipping.deliveredAt || new Date();
-    if (escrow?.status === 'held') {
+    if (escrow && escrow.status === 'held') {
       await scheduleEscrowAutoRelease(order, 5);
     }
   }
   if (order.status === 'completed') {
     order.buyerConfirmedAt = order.buyerConfirmedAt || new Date();
-    if (escrow?.status === 'held') {
+    if (escrow && escrow.status === 'held') {
       escrow = await releaseEscrowToSeller(escrow, order, {
         description: 'Buyer confirmed received item',
       });
@@ -279,22 +375,23 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
     order.completedAt = order.completedAt || new Date();
   }
   if (order.status === 'cancelled') {
-    if (escrow?.status === 'held') {
+    if (escrow && escrow.status === 'held') {
       escrow = await refundEscrowToBuyer(escrow, order, {
         description: 'Order cancelled and wallet funds refunded to buyer',
       });
     }
     order.cancelledAt = order.cancelledAt || new Date();
   }
+
   await order.save();
 
   if (previousStatus !== order.status) {
-    const statusLabel = order.status;
+    statusLabel = order.status;
     await Promise.all([
       createNotification({
         userId: order.buyer,
-        title: 'Cập nhật đơn hàng',
-        message: `Đơn hàng ${order.orderCode} chuyển trạng thái: ${statusLabel}.`,
+        title: 'Cap nhat don hang',
+        message: 'Don hang ' + order.orderCode + ' chuyen trang thai: ' + statusLabel + '.',
         type: 'order_status',
         refType: 'order',
         refId: String(order._id),
@@ -302,8 +399,8 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
       }),
       createNotification({
         userId: order.seller,
-        title: 'Cập nhật đơn hàng',
-        message: `Đơn hàng ${order.orderCode} chuyển trạng thái: ${statusLabel}.`,
+        title: 'Cap nhat don hang',
+        message: 'Don hang ' + order.orderCode + ' chuyen trang thai: ' + statusLabel + '.',
         type: 'order_status',
         refType: 'order',
         refId: String(order._id),
@@ -312,19 +409,22 @@ exports.updateOrderStatus = asyncHandler(async (req, res) => {
     ]);
   }
 
-  return sendSuccess(res, order);
-});
+  return order;
+};
 
-exports.deleteOrder = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id);
+module.exports.deleteOrder = async function(orderId, actor) {
+  var order = await Order.findById(orderId);
+
   if (!order) {
-    return sendError(res, 'Order not found', 404);
+    return false;
   }
-  if (!canAccessOrder(order, req)) {
-    return sendError(res, 'Forbidden', 403);
+  if (!canAccessOrder(order, actor)) {
+    throw createControllerError('Forbidden', 403);
   }
+
   await Order.deleteOne({ _id: order._id });
   await OrderItem.deleteMany({ order: order._id });
   await EscrowTransaction.findOneAndDelete({ order: order._id });
-  return sendSuccess(res, { deleted: true });
-});
+
+  return true;
+};

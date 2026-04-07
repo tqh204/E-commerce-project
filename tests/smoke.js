@@ -1,102 +1,180 @@
-﻿const assert = require('node:assert/strict');
-const http = require('http');
-const mongoose = require('mongoose');
+var assert = require('node:assert/strict');
+var http = require('http');
+var mongoose = require('mongoose');
 
-const app = require('../app');
-const connectDB = require('../config/database');
-const { initSocket } = require('../lib/socket');
-const { Address, Conversation, Message, Product } = require('../schemas');
+var app = require('../app');
+var connectDB = require('../config/database');
+var socketLib = require('../lib/socket');
+var schemas = require('../schemas');
 
-let server;
-let baseUrl;
+var initSocket = socketLib.initSocket;
+var Address = schemas.Address;
+var Conversation = schemas.Conversation;
+var Message = schemas.Message;
+var Product = schemas.Product;
 
-const request = async (path, options = {}) => {
-  const response = await fetch(`${baseUrl}${path}`, options);
-  const text = await response.text();
-  let payload = null;
+var server;
+var baseUrl;
+
+var request = async function(path, options) {
+  var response;
+  var text;
+  var payload = null;
+
+  if (!options) {
+    options = {};
+  }
+
+  response = await fetch(baseUrl + path, options);
+  text = await response.text();
+
   try {
     payload = text ? JSON.parse(text) : null;
   } catch (error) {
     payload = { raw: text };
   }
-  return { response, payload, text };
+
+  return {
+    response: response,
+    payload: payload,
+    text: text,
+  };
 };
 
-const login = async (identifier, password) => {
-  const { response, payload } = await request('/api/auth/login', {
+var assertAuthPayload = function(payload) {
+  assert.ok(payload && payload.data && payload.data.accessToken);
+  assert.ok(payload && payload.data && payload.data.refreshToken);
+};
+
+var login = async function(identifier, password) {
+  var result = await request('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identifier, password }),
+    body: JSON.stringify({ identifier: identifier, password: password }),
   });
-  assert.equal(response.status, 200);
-  assert.ok(payload?.data?.accessToken);
-  assert.ok(payload?.data?.refreshToken);
-  return payload.data;
+
+  assert.equal(result.response.status, 200);
+  assertAuthPayload(result.payload);
+  return result.payload.data;
 };
 
-const main = async () => {
-  let createdAddressId = null;
-  let createdConversationId = null;
-  let createdProductId = null;
+var listenOnRandomPort = function(serverInstance) {
+  return new Promise(function(resolve) {
+    serverInstance.listen(0, resolve);
+  });
+};
+
+var closeServer = function(serverInstance) {
+  return new Promise(function(resolve) {
+    serverInstance.close(resolve);
+  });
+};
+
+var findConversationById = function(items, conversationId) {
+  var index;
+
+  for (index = 0; index < items.length; index += 1) {
+    if (items[index]._id === conversationId) {
+      return items[index];
+    }
+  }
+
+  return null;
+};
+
+var main = async function() {
+  var createdAddressId = null;
+  var createdConversationId = null;
+  var createdProductId = null;
+  var homepage;
+  var reactApp;
+  var sellerCreatePage;
+  var adminCreatePage;
+  var docsPage;
+  var openapi;
+  var sellerAuth;
+  var buyerAuth;
+  var sellerToken;
+  var buyerToken;
+  var refresh;
+  var currentUser;
+  var publicSeller;
+  var profileUpdate;
+  var createAddress;
+  var listAddresses;
+  var categories;
+  var categoryId;
+  var productCreate;
+  var productId;
+  var sellerId;
+  var conversationCreate;
+  var conversationId;
+  var messageCreate;
+  var messageId;
+  var messageEdit;
+  var markRead;
+  var conversationList;
+  var matchedConversation;
+
   await connectDB();
   server = http.createServer(app);
   initSocket(server);
-  await new Promise((resolve) => server.listen(0, resolve));
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
+  await listenOnRandomPort(server);
+  baseUrl = 'http://127.0.0.1:' + server.address().port;
 
   try {
-    const homepage = await request('/');
+    homepage = await request('/');
     assert.equal(homepage.response.status, 200);
     assert.match(homepage.text, /Marketplace React/i);
 
-    const reactApp = await request('/react');
+    reactApp = await request('/react');
     assert.equal(reactApp.response.status, 200);
     assert.match(reactApp.text, /Marketplace React/i);
 
-    const sellerCreatePage = await request('/sell/products/create');
+    sellerCreatePage = await request('/sell/products/create');
     assert.equal(sellerCreatePage.response.status, 200);
     assert.match(sellerCreatePage.text, /Marketplace React/i);
 
-    const adminCreatePage = await request('/admin/products/create');
+    adminCreatePage = await request('/admin/products/create');
     assert.equal(adminCreatePage.response.status, 200);
     assert.match(adminCreatePage.text, /Marketplace React/i);
 
-    const docsPage = await request('/docs');
+    docsPage = await request('/docs');
     assert.equal(docsPage.response.status, 200);
     assert.match(docsPage.text, /Marketplace React/i);
 
-    const openapi = await request('/api-docs/openapi.json');
+    openapi = await request('/api-docs/openapi.json');
     assert.equal(openapi.response.status, 200);
     assert.equal(openapi.payload.openapi, '3.0.3');
 
-    const sellerAuth = await login('seller01@example.com', 'password123');
-    const buyerAuth = await login('buyer01@example.com', 'password123');
-    const sellerToken = sellerAuth.accessToken;
-    const buyerToken = buyerAuth.accessToken;
+    sellerAuth = await login('seller01@example.com', 'password123');
+    buyerAuth = await login('buyer01@example.com', 'password123');
+    sellerToken = sellerAuth.accessToken;
+    buyerToken = buyerAuth.accessToken;
 
-    const refresh = await request('/api/auth/refresh', {
+    refresh = await request('/api/auth/refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken: sellerAuth.refreshToken }),
     });
     assert.equal(refresh.response.status, 200);
-    assert.ok(refresh.payload?.data?.accessToken);
+    assert.ok(refresh.payload && refresh.payload.data && refresh.payload.data.accessToken);
 
-    const currentUser = await request('/api/users/me/profile', {
-      headers: { Authorization: `Bearer ${sellerToken}` },
+    currentUser = await request('/api/users/me/profile', {
+      headers: { Authorization: 'Bearer ' + sellerToken },
     });
     assert.equal(currentUser.response.status, 200);
     assert.equal(currentUser.payload.data.email, 'seller01@example.com');
 
-    const publicSeller = await request(`/api/users/${currentUser.payload.data._id}`);
+    publicSeller = await request('/api/users/' + currentUser.payload.data._id);
     assert.equal(publicSeller.response.status, 200);
     assert.equal(publicSeller.payload.data.email, undefined);
 
-    const profileUpdate = await request('/api/users/me/profile', {
+    profileUpdate = await request('/api/users/me/profile', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${sellerToken}`,
+        Authorization: 'Bearer ' + sellerToken,
       },
       body: JSON.stringify({
         fullName: 'Nguyen Van Seller Smoke',
@@ -106,11 +184,11 @@ const main = async () => {
     assert.equal(profileUpdate.response.status, 200);
     assert.equal(profileUpdate.payload.data.bio, 'Smoke profile update');
 
-    const createAddress = await request('/api/addresses', {
+    createAddress = await request('/api/addresses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${buyerToken}`,
+        Authorization: 'Bearer ' + buyerToken,
       },
       body: JSON.stringify({
         label: 'work',
@@ -129,27 +207,31 @@ const main = async () => {
     assert.equal(createAddress.payload.data.isDefault, true);
     createdAddressId = createAddress.payload.data._id;
 
-    const listAddresses = await request('/api/addresses', {
-      headers: { Authorization: `Bearer ${buyerToken}` },
+    listAddresses = await request('/api/addresses', {
+      headers: { Authorization: 'Bearer ' + buyerToken },
     });
     assert.equal(listAddresses.response.status, 200);
     assert.ok(Array.isArray(listAddresses.payload.data));
-    assert.ok(listAddresses.payload.data.some((item) => item._id === createAddress.payload.data._id));
+    assert.ok(
+      listAddresses.payload.data.some(function(item) {
+        return item._id === createAddress.payload.data._id;
+      })
+    );
 
-    const categories = await request('/api/categories?limit=1');
+    categories = await request('/api/categories?limit=1');
     assert.equal(categories.response.status, 200);
-    const categoryId = categories.payload.data[0]._id;
+    categoryId = categories.payload.data[0]._id;
     assert.ok(categoryId);
 
-    const productCreate = await request('/api/products', {
+    productCreate = await request('/api/products', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${sellerToken}`,
+        Authorization: 'Bearer ' + sellerToken,
       },
       body: JSON.stringify({
-        categoryId,
-        title: `Smoke Product ${Date.now()}`,
+        categoryId: categoryId,
+        title: 'Smoke Product ' + Date.now(),
         description: 'Smoke test product for automated test suite',
         price: 123456,
         saleType: 'fixed_price',
@@ -158,42 +240,42 @@ const main = async () => {
       }),
     });
     assert.equal(productCreate.response.status, 201);
-    const productId = productCreate.payload.data._id;
-    const sellerId = productCreate.payload.data.seller;
+    productId = productCreate.payload.data._id;
+    sellerId = productCreate.payload.data.seller;
     createdProductId = productId;
 
-    const conversationCreate = await request('/api/conversations', {
+    conversationCreate = await request('/api/conversations', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${buyerToken}`,
+        Authorization: 'Bearer ' + buyerToken,
       },
       body: JSON.stringify({
-        productId,
+        productId: productId,
         otherUserId: sellerId,
         initialMessage: 'Smoke chat start',
       }),
     });
     assert.equal(conversationCreate.response.status, 201);
-    const conversationId = conversationCreate.payload.data._id;
+    conversationId = conversationCreate.payload.data._id;
     createdConversationId = conversationId;
 
-    const messageCreate = await request(`/api/conversations/${conversationId}/messages`, {
+    messageCreate = await request('/api/conversations/' + conversationId + '/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${buyerToken}`,
+        Authorization: 'Bearer ' + buyerToken,
       },
       body: JSON.stringify({ content: 'Original smoke message' }),
     });
     assert.equal(messageCreate.response.status, 201);
-    const messageId = messageCreate.payload.data._id;
+    messageId = messageCreate.payload.data._id;
 
-    const messageEdit = await request(`/api/conversations/${conversationId}/messages/${messageId}`, {
+    messageEdit = await request('/api/conversations/' + conversationId + '/messages/' + messageId, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${buyerToken}`,
+        Authorization: 'Bearer ' + buyerToken,
       },
       body: JSON.stringify({ content: 'Edited smoke message' }),
     });
@@ -201,26 +283,33 @@ const main = async () => {
     assert.equal(messageEdit.payload.data.content, 'Edited smoke message');
     assert.ok(messageEdit.payload.data.editedAt);
 
-    const markRead = await request(`/api/conversations/${conversationId}/read`, {
+    markRead = await request('/api/conversations/' + conversationId + '/read', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${sellerToken}`,
+        Authorization: 'Bearer ' + sellerToken,
       },
       body: JSON.stringify({}),
     });
     assert.equal(markRead.response.status, 200);
     assert.ok(Array.isArray(markRead.payload.data.messageIds));
 
-    const conversationList = await request('/api/conversations?limit=10', {
-      headers: { Authorization: `Bearer ${sellerToken}` },
+    conversationList = await request('/api/conversations?limit=10', {
+      headers: { Authorization: 'Bearer ' + sellerToken },
     });
     assert.equal(conversationList.response.status, 200);
-    const matchedConversation = conversationList.payload.data.find((item) => item._id === conversationId);
+    matchedConversation = findConversationById(conversationList.payload.data, conversationId);
     assert.ok(matchedConversation);
     assert.equal(typeof matchedConversation.unreadCount, 'number');
 
-    console.log(JSON.stringify({ ok: true, docs: true, productId, conversationId, messageId, unreadCount: matchedConversation.unreadCount }, null, 2));
+    console.log(JSON.stringify({
+      ok: true,
+      docs: true,
+      productId: productId,
+      conversationId: conversationId,
+      messageId: messageId,
+      unreadCount: matchedConversation.unreadCount,
+    }, null, 2));
   } finally {
     if (createdConversationId) {
       await Message.deleteMany({ conversation: createdConversationId });
@@ -233,23 +322,13 @@ const main = async () => {
       await Address.deleteOne({ _id: createdAddressId });
     }
     if (server) {
-      await new Promise((resolve) => server.close(resolve));
+      await closeServer(server);
     }
     await mongoose.disconnect();
   }
 };
 
-main().catch((error) => {
+main().catch(function(error) {
   console.error(error);
   process.exitCode = 1;
 });
-
-
-
-
-
-
-
-
-
-

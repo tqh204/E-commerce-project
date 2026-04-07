@@ -1,25 +1,35 @@
-const { Notification } = require('../schemas');
-const { asyncHandler, buildPaginationMeta, parsePagination, sendSuccess } = require('../lib/http');
-const { markAllNotificationsRead, markNotificationRead } = require('../lib/notifications');
+var schemas = require('../schemas');
+var httpLib = require('../lib/http');
+var notificationLib = require('../lib/notifications');
 
-exports.listNotifications = asyncHandler(async (req, res) => {
-  const { page, limit, skip } = parsePagination(req.query);
-  const filter = { user: req.user._id };
+var Notification = schemas.Notification;
+var buildPaginationMeta = httpLib.buildPaginationMeta;
+var parsePagination = httpLib.parsePagination;
+var markAllNotificationsRead = notificationLib.markAllNotificationsRead;
+var markNotificationRead = notificationLib.markNotificationRead;
 
-  const [items, total] = await Promise.all([
+module.exports.listNotifications = async function(userId, query) {
+  var pagination = parsePagination(query || {});
+  var page = pagination.page;
+  var limit = pagination.limit;
+  var skip = pagination.skip;
+  var filter = { user: userId };
+  var results = await Promise.all([
     Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
     Notification.countDocuments(filter),
   ]);
 
-  return sendSuccess(res, items, buildPaginationMeta(page, limit, total));
-});
+  return {
+    data: results[0],
+    meta: buildPaginationMeta(page, limit, results[1]),
+  };
+};
 
-exports.markNotificationRead = asyncHandler(async (req, res) => {
-  const notification = await markNotificationRead(req.params.id, req.user._id);
-  return sendSuccess(res, notification || { updated: false });
-});
+module.exports.markNotificationRead = async function(notificationId, userId) {
+  return markNotificationRead(notificationId, userId);
+};
 
-exports.markAllRead = asyncHandler(async (req, res) => {
-  const result = await markAllNotificationsRead(req.user._id);
-  return sendSuccess(res, { updated: result.modifiedCount || 0 });
-});
+module.exports.markAllRead = async function(userId) {
+  var result = await markAllNotificationsRead(userId);
+  return { updated: result.modifiedCount || 0 };
+};

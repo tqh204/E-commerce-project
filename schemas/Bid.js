@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+var mongoose = require('mongoose');
 
-const bidSchema = new mongoose.Schema(
+var bidSchema = new mongoose.Schema(
   {
     auction: {
       type: mongoose.Schema.Types.ObjectId,
@@ -60,3 +60,4 @@ bidSchema.index({ auction: 1, createdAt: -1 });
 bidSchema.index({ bidder: 1, createdAt: -1 });
 
 module.exports = mongoose.models.Bid || mongoose.model('Bid', bidSchema);
+

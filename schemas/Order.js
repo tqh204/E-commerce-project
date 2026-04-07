@@ -1,12 +1,12 @@
-const mongoose = require('mongoose');
-const {
-  generateCode,
-  normalizeOrderStatus,
-  phoneValidator,
-  POSTAL_CODE_REGEX,
-} = require('./validators');
+var mongoose = require('mongoose');
+var validators = require('./validators');
 
-const orderSchema = new mongoose.Schema(
+var generateCode = validators.generateCode;
+var normalizeOrderStatus = validators.normalizeOrderStatus;
+var phoneValidator = validators.phoneValidator;
+var POSTAL_CODE_REGEX = validators.POSTAL_CODE_REGEX;
+
+var orderSchema = new mongoose.Schema(
   {
     orderCode: {
       type: String,
@@ -265,7 +265,7 @@ orderSchema.pre('validate', function deriveOrderFields() {
     this.subtotal = this.price * this.quantity;
   }
 
-  this.shippingMethod = this.shipping?.method || this.shippingMethod;
+  this.shippingMethod = this.shipping && this.shipping.method ? this.shipping.method : this.shippingMethod;
   this.shipping.shippingFee = this.shipping.shippingFee || this.shippingFee;
   this.totalAmount = this.subtotal + this.shippingFee + this.platformFee;
 });
@@ -274,4 +274,3 @@ orderSchema.index({ buyer: 1, status: 1, createdAt: -1 });
 orderSchema.index({ seller: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.models.Order || mongoose.model('Order', orderSchema);
-

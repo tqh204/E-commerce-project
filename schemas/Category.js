@@ -1,7 +1,10 @@
-const mongoose = require('mongoose');
-const { slugify, SLUG_REGEX } = require('./validators');
+var mongoose = require('mongoose');
+var validators = require('./validators');
 
-const categorySchema = new mongoose.Schema(
+var slugify = validators.slugify;
+var SLUG_REGEX = validators.SLUG_REGEX;
+
+var categorySchema = new mongoose.Schema(
   {
     name: {
       type: String,
@@ -86,4 +89,3 @@ categorySchema.pre('validate', function setDerivedFields() {
 categorySchema.index({ parentCategory: 1, sortOrder: 1 });
 
 module.exports = mongoose.models.Category || mongoose.model('Category', categorySchema);
-

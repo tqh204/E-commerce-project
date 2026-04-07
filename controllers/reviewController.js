@@ -1,44 +1,61 @@
-const { Order, Product, Review, User } = require('../schemas');
-const {
-  asyncHandler,
-  buildPaginationMeta,
-  parsePagination,
-  sendError,
-  sendSuccess,
-} = require('../lib/http');
+var schemas = require('../schemas');
+var httpLib = require('../lib/http');
 
-const canManageReview = (review, req) =>
-  (req.userRoles || []).includes('admin') ||
-  String(review.reviewer) === String(req.user._id) ||
-  String(review.reviewee) === String(req.user._id);
+var Order = schemas.Order;
+var Review = schemas.Review;
+var User = schemas.User;
+var buildPaginationMeta = httpLib.buildPaginationMeta;
+var parsePagination = httpLib.parsePagination;
 
-const updateUserRating = async (userId) => {
-  const reviews = await Review.find({ reviewee: userId, isVisible: true });
-  const ratingCount = reviews.length;
-  const ratingAvg =
-    ratingCount === 0 ? 0 : reviews.reduce((sum, review) => sum + review.score, 0) / ratingCount;
-
-  await User.findByIdAndUpdate(userId, { ratingCount, ratingAvg });
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
+  }
+  return error;
 };
 
-exports.listReviews = asyncHandler(async (req, res) => {
-  const { page, limit, skip } = parsePagination(req.query);
-  const filter = {};
+var canManageReview = function(review, actor) {
+  return (actor.userRoles || []).indexOf('admin') !== -1 ||
+    String(review.reviewer) === String(actor.user && actor.user._id) ||
+    String(review.reviewee) === String(actor.user && actor.user._id);
+};
 
-  if (req.query.productId) {
-    filter.product = req.query.productId;
+var updateUserRating = async function(userId) {
+  var reviews = await Review.find({ reviewee: userId, isVisible: true });
+  var ratingCount = reviews.length;
+  var ratingAvg = ratingCount === 0
+    ? 0
+    : reviews.reduce(function(sum, review) {
+      return sum + review.score;
+    }, 0) / ratingCount;
+
+  await User.findByIdAndUpdate(userId, { ratingCount: ratingCount, ratingAvg: ratingAvg });
+};
+
+module.exports.listReviews = async function(query) {
+  var pagination = parsePagination(query || {});
+  var page = pagination.page;
+  var limit = pagination.limit;
+  var skip = pagination.skip;
+  var filter = {};
+  var results;
+
+  if (query && query.productId) {
+    filter.product = query.productId;
   }
-  if (req.query.revieweeId) {
-    filter.reviewee = req.query.revieweeId;
+  if (query && query.revieweeId) {
+    filter.reviewee = query.revieweeId;
   }
-  if (req.query.reviewerId) {
-    filter.reviewer = req.query.reviewerId;
+  if (query && query.reviewerId) {
+    filter.reviewer = query.reviewerId;
   }
-  if (req.query.visible !== undefined) {
-    filter.isVisible = req.query.visible === 'true';
+  if (query && query.visible !== undefined) {
+    filter.isVisible = query.visible === 'true';
   }
 
-  const [reviews, total] = await Promise.all([
+  results = await Promise.all([
     Review.find(filter)
       .populate('product', 'title thumbnailImage')
       .populate('reviewer', 'username fullName avatarUrl')
@@ -49,87 +66,93 @@ exports.listReviews = asyncHandler(async (req, res) => {
     Review.countDocuments(filter),
   ]);
 
-  return sendSuccess(res, reviews, buildPaginationMeta(page, limit, total));
-});
+  return {
+    data: results[0],
+    meta: buildPaginationMeta(page, limit, results[1]),
+  };
+};
 
-exports.getReviewById = asyncHandler(async (req, res) => {
-  const review = await Review.findById(req.params.id)
+module.exports.getReviewById = async function(reviewId) {
+  return Review.findById(reviewId)
     .populate('product', 'title thumbnailImage')
     .populate('reviewer', 'username fullName avatarUrl')
     .populate('reviewee', 'username fullName avatarUrl');
+};
 
-  if (!review) {
-    return sendError(res, 'Review not found', 404);
-  }
+module.exports.createReview = async function(body, actor) {
+  var order = await Order.findById(body.orderId).populate('product');
+  var reviewerId;
+  var isBuyer;
+  var isSeller;
+  var reviewee;
+  var existing;
+  var review;
 
-  return sendSuccess(res, review);
-});
-
-exports.createReview = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.body.orderId).populate('product');
   if (!order) {
-    return sendError(res, 'Order not found', 404);
+    throw createControllerError('Order not found', 404);
   }
 
-  const reviewerId = String(req.user._id);
-  const isBuyer = String(order.buyer) === reviewerId;
-  const isSeller = String(order.seller) === reviewerId;
-  if (!isBuyer && !isSeller && !(req.userRoles || []).includes('admin')) {
-    return sendError(res, 'Forbidden', 403);
+  reviewerId = String(actor.user && actor.user._id);
+  isBuyer = String(order.buyer) === reviewerId;
+  isSeller = String(order.seller) === reviewerId;
+  if (!isBuyer && !isSeller && (actor.userRoles || []).indexOf('admin') === -1) {
+    throw createControllerError('Forbidden', 403);
   }
 
-  const reviewee = isBuyer ? order.seller : order.buyer;
-  const existing = await Review.findOne({ order: order._id, reviewer: req.user._id });
+  reviewee = isBuyer ? order.seller : order.buyer;
+  existing = await Review.findOne({ order: order._id, reviewer: actor.user._id });
   if (existing) {
-    return sendError(res, 'Review already exists for this order', 409);
+    throw createControllerError('Review already exists for this order', 409);
   }
 
-  const review = await Review.create({
+  review = await Review.create({
     order: order._id,
-    product: order.product?._id || order.product,
-    reviewer: req.user._id,
-    reviewee,
-    score: Number(req.body.score),
-    comment: req.body.comment,
-    mediaIds: req.body.mediaIds,
-    images: req.body.images,
-    isVisible: req.body.isVisible !== undefined ? Boolean(req.body.isVisible) : true,
+    product: order.product && order.product._id ? order.product._id : order.product,
+    reviewer: actor.user._id,
+    reviewee: reviewee,
+    score: Number(body.score),
+    comment: body.comment,
+    mediaIds: body.mediaIds,
+    images: body.images,
+    isVisible: body.isVisible !== undefined ? Boolean(body.isVisible) : true,
   });
 
   await updateUserRating(reviewee);
-  return sendSuccess(res, review, null, 201);
-});
+  return review;
+};
 
-exports.respondToReview = asyncHandler(async (req, res) => {
-  const review = await Review.findById(req.params.id);
+module.exports.respondToReview = async function(reviewId, body, actor) {
+  var review = await Review.findById(reviewId);
+
   if (!review) {
-    return sendError(res, 'Review not found', 404);
+    return null;
   }
-  if (!canManageReview(review, req)) {
-    return sendError(res, 'Forbidden', 403);
+  if (!canManageReview(review, actor)) {
+    throw createControllerError('Forbidden', 403);
   }
 
   review.sellerResponse = {
-    content: req.body.content || '',
+    content: body.content || '',
     respondedAt: new Date(),
   };
   await review.save();
 
-  return sendSuccess(res, review);
-});
+  return review;
+};
 
-exports.updateVisibility = asyncHandler(async (req, res) => {
-  const review = await Review.findById(req.params.id);
+module.exports.updateVisibility = async function(reviewId, body, actor) {
+  var review = await Review.findById(reviewId);
+
   if (!review) {
-    return sendError(res, 'Review not found', 404);
+    return null;
   }
-  if (!(req.userRoles || []).includes('admin')) {
-    return sendError(res, 'Forbidden', 403);
+  if ((actor.userRoles || []).indexOf('admin') === -1) {
+    throw createControllerError('Forbidden', 403);
   }
 
-  review.isVisible = req.body.isVisible !== undefined ? Boolean(req.body.isVisible) : review.isVisible;
+  review.isVisible = body.isVisible !== undefined ? Boolean(body.isVisible) : review.isVisible;
   await review.save();
   await updateUserRating(review.reviewee);
 
-  return sendSuccess(res, review);
-});
+  return review;
+};

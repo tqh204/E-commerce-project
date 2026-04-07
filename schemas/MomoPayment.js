@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+var mongoose = require('mongoose');
 
-const momoPaymentSchema = new mongoose.Schema(
+var momoPaymentSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
@@ -59,3 +59,4 @@ const momoPaymentSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.models.MomoPayment || mongoose.model('MomoPayment', momoPaymentSchema);
+

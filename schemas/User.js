@@ -1,7 +1,10 @@
-const mongoose = require('mongoose');
-const { emailValidator, phoneValidator } = require('./validators');
+var mongoose = require('mongoose');
+var validators = require('./validators');
 
-const userSchema = new mongoose.Schema(
+var emailValidator = validators.emailValidator;
+var phoneValidator = validators.phoneValidator;
+
+var userSchema = new mongoose.Schema(
   {
     username: {
       type: String,
@@ -131,4 +134,3 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ roles: 1, status: 1 });
 
 module.exports = mongoose.models.User || mongoose.model('User', userSchema);
-

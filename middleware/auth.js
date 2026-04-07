@@ -1,53 +1,72 @@
-const { User } = require('../schemas');
-const { verifyAccessToken } = require('../lib/auth');
-const { asyncHandler, sendError } = require('../lib/http');
+var schemas = require('../schemas');
+var authLib = require('../lib/auth');
+var httpLib = require('../lib/http');
 
-const extractAccessToken = (req) => {
-  const authHeader = req.headers.authorization || '';
-  if (authHeader.startsWith('Bearer ')) {
+var User = schemas.User;
+var verifyAccessToken = authLib.verifyAccessToken;
+var asyncHandler = httpLib.asyncHandler;
+var sendError = httpLib.sendError;
+
+var extractAccessToken = function(req) {
+  var authHeader = req.headers.authorization || '';
+
+  if (authHeader.indexOf('Bearer ') === 0) {
     return authHeader.slice(7).trim();
   }
 
-  return req.cookies?.accessToken || req.query.accessToken || null;
+  if (req.cookies && req.cookies.accessToken) {
+    return req.cookies.accessToken;
+  }
+
+  return req.query.accessToken || null;
 };
 
-const requireAuth = asyncHandler(async (req, res, next) => {
-  const token = extractAccessToken(req);
+var requireAuth = asyncHandler(async function(req, res, next) {
+  var token = extractAccessToken(req);
+  var payload;
+  var user;
+
   if (!token) {
     return sendError(res, 'Authentication required', 401);
   }
 
-  let payload;
   try {
     payload = verifyAccessToken(token);
   } catch (error) {
     return sendError(res, error.message, 401);
   }
 
-  const user = await User.findById(payload.sub).populate('roles', 'name permissions');
+  user = await User.findById(payload.sub).populate('roles', 'name permissions');
   if (!user || !user.isActive) {
     return sendError(res, 'User not found or inactive', 401);
   }
 
   req.user = user;
   req.auth = payload;
-  req.userRoles = (user.roles || []).map((role) => role.name);
+  req.userRoles = (user.roles || []).map(function(role) {
+    return role.name;
+  });
   return next();
 });
 
-const optionalAuth = asyncHandler(async (req, res, next) => {
-  const token = extractAccessToken(req);
+var optionalAuth = asyncHandler(async function(req, res, next) {
+  var token = extractAccessToken(req);
+  var payload;
+  var user;
+
   if (!token) {
     return next();
   }
 
   try {
-    const payload = verifyAccessToken(token);
-    const user = await User.findById(payload.sub).populate('roles', 'name permissions');
+    payload = verifyAccessToken(token);
+    user = await User.findById(payload.sub).populate('roles', 'name permissions');
     if (user && user.isActive) {
       req.user = user;
       req.auth = payload;
-      req.userRoles = (user.roles || []).map((role) => role.name);
+      req.userRoles = (user.roles || []).map(function(role) {
+        return role.name;
+      });
     }
   } catch (error) {
     // Ignore optional auth failure.
@@ -56,28 +75,44 @@ const optionalAuth = asyncHandler(async (req, res, next) => {
   return next();
 });
 
-const hasAnyRole = (req, allowedRoles = []) => {
-  const roleSet = new Set(req.userRoles || []);
-  return allowedRoles.some((role) => roleSet.has(role));
+var hasAnyRole = function(req, allowedRoles) {
+  var roles = allowedRoles || [];
+  var userRoles = req.userRoles || [];
+  var roleIndex;
+  var currentRole;
+
+  for (roleIndex = 0; roleIndex < roles.length; roleIndex += 1) {
+    currentRole = roles[roleIndex];
+    if (userRoles.indexOf(currentRole) !== -1) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
-const requireAnyRole = (...allowedRoles) => [
-  requireAuth,
-  (req, res, next) => {
-    if (hasAnyRole(req, allowedRoles)) {
-      return next();
-    }
+var requireAnyRole = function() {
+  var allowedRoles = Array.prototype.slice.call(arguments);
+  return [
+    requireAuth,
+    function(req, res, next) {
+      if (hasAnyRole(req, allowedRoles)) {
+        return next();
+      }
 
-    return sendError(res, 'Forbidden', 403);
-  },
-];
+      return sendError(res, 'Forbidden', 403);
+    },
+  ];
+};
 
-const isAdmin = (req) => (req.userRoles || []).includes('admin');
+var isAdmin = function(req) {
+  return (req.userRoles || []).indexOf('admin') !== -1;
+};
 
 module.exports = {
-  requireAuth,
-  optionalAuth,
-  requireAnyRole,
-  hasAnyRole,
-  isAdmin,
+  requireAuth: requireAuth,
+  optionalAuth: optionalAuth,
+  requireAnyRole: requireAnyRole,
+  hasAnyRole: hasAnyRole,
+  isAdmin: isAdmin,
 };

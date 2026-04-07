@@ -1,7 +1,9 @@
-const mongoose = require('mongoose');
-const { arrayLengthValidator } = require('./validators');
+var mongoose = require('mongoose');
+var validators = require('./validators');
 
-const messageSchema = new mongoose.Schema(
+var arrayLengthValidator = validators.arrayLengthValidator;
+
+var messageSchema = new mongoose.Schema(
   {
     conversation: {
       type: mongoose.Schema.Types.ObjectId,
@@ -78,11 +80,15 @@ const messageSchema = new mongoose.Schema(
 );
 
 messageSchema.path('content').validate(function validateMessageBody(value) {
+  var hasText;
+  var hasAttachment;
+
   if (this.status === 'deleted') {
     return true;
   }
-  const hasText = Boolean((value || '').trim());
-  const hasAttachment = this.attachments.length > 0 || this.attachmentUrls.length > 0;
+
+  hasText = Boolean((value || '').trim());
+  hasAttachment = this.attachments.length > 0 || this.attachmentUrls.length > 0;
   return hasText || hasAttachment;
 }, 'Message requires text or attachments');
 

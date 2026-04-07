@@ -1,71 +1,93 @@
-﻿const { Auction, Bid, Product, User } = require('../schemas');
-const { createNotification } = require('../lib/notifications');
-const {
-  closeAuction,
-  createAuctionSettlementOrder,
-  getAuctionParticipationAmount,
-  runAuctionLifecycleTick,
-} = require('../lib/auctionLifecycle');
-const { reserveWalletFunds, releaseWalletReserve } = require('../lib/wallet');
-const {
-  asyncHandler,
-  buildPaginationMeta,
-  cleanObject,
-  parsePagination,
-  sendError,
-  sendSuccess,
-} = require('../lib/http');
+var schemas = require('../schemas');
+var notificationLib = require('../lib/notifications');
+var auctionLifecycleLib = require('../lib/auctionLifecycle');
+var walletLib = require('../lib/wallet');
+var httpLib = require('../lib/http');
 
-const ALLOWED_CREATE_STATUSES = new Set(['scheduled', 'live', 'cancelled']);
-const AUCTION_EDITABLE_STATUSES = new Set(['scheduled', 'cancelled']);
+var Auction = schemas.Auction;
+var Bid = schemas.Bid;
+var Product = schemas.Product;
+var User = schemas.User;
+var createNotification = notificationLib.createNotification;
+var closeAuction = auctionLifecycleLib.closeAuction;
+var createAuctionSettlementOrder = auctionLifecycleLib.createAuctionSettlementOrder;
+var getAuctionParticipationAmount = auctionLifecycleLib.getAuctionParticipationAmount;
+var runAuctionLifecycleTick = auctionLifecycleLib.runAuctionLifecycleTick;
+var reserveWalletFunds = walletLib.reserveWalletFunds;
+var releaseWalletReserve = walletLib.releaseWalletReserve;
+var buildPaginationMeta = httpLib.buildPaginationMeta;
+var cleanObject = httpLib.cleanObject;
+var parsePagination = httpLib.parsePagination;
 
-const toCurrencyNumber = (value, fallback = 0) => {
-  const parsed = Number(value);
+var ALLOWED_CREATE_STATUSES = ['scheduled', 'live', 'cancelled'];
+var AUCTION_EDITABLE_STATUSES = ['scheduled', 'cancelled'];
+
+var createControllerError = function(message, status, details) {
+  var error = new Error(message);
+  error.status = status || 400;
+  if (details !== undefined) {
+    error.details = details;
+  }
+  return error;
+};
+
+var containsValue = function(list, value) {
+  return Array.isArray(list) && list.indexOf(value) !== -1;
+};
+
+var toCurrencyNumber = function(value, fallback) {
+  var parsed;
+
+  if (fallback === undefined) {
+    fallback = 0;
+  }
+
+  parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const computeMinimumBidStep = (baseAmount) => {
-  const normalizedBase = Math.max(toCurrencyNumber(baseAmount, 0), 0);
+var computeMinimumBidStep = function(baseAmount) {
+  var normalizedBase = Math.max(toCurrencyNumber(baseAmount, 0), 0);
   return Math.max(20000, Math.ceil(normalizedBase * 0.2));
 };
 
-const buildAuctionPricing = (product, payload = {}) => {
-  const startingBid = Math.max(toCurrencyNumber(payload.startingBid, 0), 0);
-  const pricingBase =
-    startingBid || toCurrencyNumber(product.price, 0) || toCurrencyNumber(payload.buyNowPrice, 0);
-  const minimumBidStep = computeMinimumBidStep(pricingBase);
-  const requestedBidStep = payload.bidStep === undefined ? null : toCurrencyNumber(payload.bidStep, 0);
+var buildAuctionPricing = function(product, payload) {
+  var source = payload || {};
+  var startingBid = Math.max(toCurrencyNumber(source.startingBid, 0), 0);
+  var pricingBase =
+    startingBid || toCurrencyNumber(product.price, 0) || toCurrencyNumber(source.buyNowPrice, 0);
+  var minimumBidStep = computeMinimumBidStep(pricingBase);
+  var requestedBidStep =
+    source.bidStep === undefined ? null : toCurrencyNumber(source.bidStep, 0);
 
   if (!startingBid) {
-    const error = new Error('startingBid must be greater than 0');
-    error.status = 400;
-    throw error;
+    throw createControllerError('startingBid must be greater than 0', 400);
   }
 
   if (requestedBidStep !== null && requestedBidStep < minimumBidStep) {
-    const error = new Error(`Bid step must be at least ${minimumBidStep}`);
-    error.status = 400;
-    throw error;
+    throw createControllerError('Bid step must be at least ' + minimumBidStep, 400);
   }
 
   return {
-    startingBid,
-    currentBid: Math.max(toCurrencyNumber(payload.currentBid, startingBid), startingBid),
+    startingBid: startingBid,
+    currentBid: Math.max(toCurrencyNumber(source.currentBid, startingBid), startingBid),
     reservePrice:
-      payload.reservePrice === undefined || payload.reservePrice === null
+      source.reservePrice === undefined || source.reservePrice === null
         ? null
-        : Math.max(toCurrencyNumber(payload.reservePrice, 0), 0),
+        : Math.max(toCurrencyNumber(source.reservePrice, 0), 0),
     buyNowPrice:
-      payload.buyNowPrice === undefined || payload.buyNowPrice === null
+      source.buyNowPrice === undefined || source.buyNowPrice === null
         ? null
-        : Math.max(toCurrencyNumber(payload.buyNowPrice, 0), 0),
+        : Math.max(toCurrencyNumber(source.buyNowPrice, 0), 0),
     bidStep: requestedBidStep !== null ? requestedBidStep : minimumBidStep,
-    minimumBidStep,
+    minimumBidStep: minimumBidStep,
   };
 };
 
-const syncProductForAuction = async (product, auctionStatus, pricing, options = {}) => {
-  const { preserveSoldState = false } = options;
+var syncProductForAuction = async function(product, auctionStatus, pricing, options) {
+  var config = options || {};
+  var preserveSoldState = Boolean(config.preserveSoldState);
+
   product.saleType = 'auction';
   product.startingBid = pricing.startingBid;
   product.currentBid = pricing.currentBid;
@@ -88,14 +110,26 @@ const syncProductForAuction = async (product, auctionStatus, pricing, options = 
   return product;
 };
 
-exports.listAuctions = asyncHandler(async (req, res) => {
+module.exports.listAuctions = async function(query) {
+  var pagination;
+  var page;
+  var limit;
+  var skip;
+  var filter = {};
+  var results;
+
   await runAuctionLifecycleTick();
-  const { page, limit, skip } = parsePagination(req.query);
-  const filter = {};
-  if (req.query.status) {
-    filter.status = req.query.status;
+
+  pagination = parsePagination(query || {});
+  page = pagination.page;
+  limit = pagination.limit;
+  skip = pagination.skip;
+
+  if (query && query.status) {
+    filter.status = query.status;
   }
-  const [auctions, total] = await Promise.all([
+
+  results = await Promise.all([
     Auction.find(filter)
       .populate('product', 'title price thumbnailImage status buyNowPrice')
       .populate('seller', 'username fullName')
@@ -106,56 +140,66 @@ exports.listAuctions = asyncHandler(async (req, res) => {
     Auction.countDocuments(filter),
   ]);
 
-  return sendSuccess(res, auctions, buildPaginationMeta(page, limit, total));
-});
+  return {
+    data: results[0],
+    meta: buildPaginationMeta(page, limit, results[1]),
+  };
+};
 
-exports.getAuctionById = asyncHandler(async (req, res) => {
-  const auction = await Auction.findById(req.params.id)
+module.exports.getAuctionById = async function(auctionId) {
+  var auction = await Auction.findById(auctionId)
     .populate('product', 'title price thumbnailImage status buyNowPrice')
     .populate('seller', 'username fullName')
     .populate('winnerUser', 'username fullName')
     .populate('winnerBid');
+  var bids;
 
   if (!auction) {
-    return sendError(res, 'Auction not found', 404);
+    return null;
   }
 
-  const bids = await Bid.find({ auction: auction._id })
+  bids = await Bid.find({ auction: auction._id })
     .populate('bidder', 'username fullName')
     .sort({ createdAt: -1 })
     .limit(20);
 
-  return sendSuccess(res, { auction, bids });
-});
+  return { auction: auction, bids: bids };
+};
 
-exports.createAuction = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.body.productId);
+module.exports.createAuction = async function(body, actor) {
+  var product = await Product.findById(body.productId);
+  var isAdmin;
+  var pricing;
+  var requestedStatus;
+  var status;
+  var auction;
+
   if (!product) {
-    return sendError(res, 'Product not found', 404);
+    throw createControllerError('Product not found', 404);
   }
 
-  const isAdmin = (req.userRoles || []).includes('admin');
-  if (String(product.seller) !== String(req.user._id) && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
+  isAdmin = (actor.userRoles || []).indexOf('admin') !== -1;
+  if (String(product.seller) !== String(actor.user._id) && !isAdmin) {
+    throw createControllerError('Forbidden', 403);
   }
 
-  const pricing = buildAuctionPricing(product, req.body);
-  const requestedStatus = `${req.body.status || ''}`.trim();
-  const status = ALLOWED_CREATE_STATUSES.has(requestedStatus) ? requestedStatus : 'scheduled';
+  pricing = buildAuctionPricing(product, body);
+  requestedStatus = String(body.status || '').trim();
+  status = containsValue(ALLOWED_CREATE_STATUSES, requestedStatus) ? requestedStatus : 'scheduled';
 
-  const auction = await Auction.create({
+  auction = await Auction.create({
     product: product._id,
     seller: product.seller,
-    startAt: req.body.startAt,
-    endAt: req.body.endAt,
+    startAt: body.startAt,
+    endAt: body.endAt,
     startingBid: pricing.startingBid,
     currentBid: pricing.currentBid,
     reservePrice: pricing.reservePrice,
     buyNowPrice: pricing.buyNowPrice,
     bidStep: pricing.bidStep,
     minimumBidStep: pricing.minimumBidStep,
-    autoExtendMinutes: req.body.autoExtendMinutes,
-    status,
+    autoExtendMinutes: body.autoExtendMinutes,
+    status: status,
   });
 
   await syncProductForAuction(product, auction.status, pricing);
@@ -164,55 +208,61 @@ exports.createAuction = asyncHandler(async (req, res) => {
     await runAuctionLifecycleTick();
   }
 
-  return sendSuccess(res, auction, null, 201);
-});
+  return auction;
+};
 
-exports.updateAuction = asyncHandler(async (req, res) => {
-  const auction = await Auction.findById(req.params.id);
+module.exports.updateAuction = async function(auctionId, body, actor) {
+  var auction = await Auction.findById(auctionId);
+  var isAdmin;
+  var isOwner;
+  var product;
+  var pricing;
+  var requestedStatus;
+
   if (!auction) {
-    return sendError(res, 'Auction not found', 404);
+    return null;
   }
 
-  const isAdmin = (req.userRoles || []).includes('admin');
-  const isOwner = String(auction.seller) === String(req.user._id);
+  isAdmin = (actor.userRoles || []).indexOf('admin') !== -1;
+  isOwner = String(auction.seller) === String(actor.user._id);
   if (!isOwner && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
+    throw createControllerError('Forbidden', 403);
   }
-  if (!AUCTION_EDITABLE_STATUSES.has(auction.status) && !isAdmin) {
-    return sendError(res, 'Auction can no longer be edited', 400);
+  if (!containsValue(AUCTION_EDITABLE_STATUSES, auction.status) && !isAdmin) {
+    throw createControllerError('Auction can no longer be edited', 400);
   }
 
-  const product = await Product.findById(auction.product);
+  product = await Product.findById(auction.product);
   if (!product) {
-    return sendError(res, 'Product not found', 404);
+    throw createControllerError('Product not found', 404);
   }
 
-  const pricing = buildAuctionPricing(product, {
-    startingBid: req.body.startingBid ?? auction.startingBid,
-    currentBid: req.body.currentBid ?? auction.currentBid,
-    reservePrice: req.body.reservePrice ?? auction.reservePrice,
-    buyNowPrice: req.body.buyNowPrice ?? auction.buyNowPrice,
-    bidStep: req.body.bidStep ?? auction.bidStep,
+  pricing = buildAuctionPricing(product, {
+    startingBid: body.startingBid === undefined ? auction.startingBid : body.startingBid,
+    currentBid: body.currentBid === undefined ? auction.currentBid : body.currentBid,
+    reservePrice: body.reservePrice === undefined ? auction.reservePrice : body.reservePrice,
+    buyNowPrice: body.buyNowPrice === undefined ? auction.buyNowPrice : body.buyNowPrice,
+    bidStep: body.bidStep === undefined ? auction.bidStep : body.bidStep,
   });
 
   Object.assign(
     auction,
     cleanObject({
-      startAt: req.body.startAt,
-      endAt: req.body.endAt,
+      startAt: body.startAt,
+      endAt: body.endAt,
       startingBid: pricing.startingBid,
       currentBid: pricing.currentBid,
       reservePrice: pricing.reservePrice,
       buyNowPrice: pricing.buyNowPrice,
       bidStep: pricing.bidStep,
       minimumBidStep: pricing.minimumBidStep,
-      autoExtendMinutes: req.body.autoExtendMinutes,
+      autoExtendMinutes: body.autoExtendMinutes,
     })
   );
 
   if (!isAdmin) {
-    const requestedStatus = `${req.body.status || ''}`.trim();
-    auction.status = ALLOWED_CREATE_STATUSES.has(requestedStatus)
+    requestedStatus = String(body.status || '').trim();
+    auction.status = containsValue(ALLOWED_CREATE_STATUSES, requestedStatus)
       ? requestedStatus
       : auction.status || 'scheduled';
   }
@@ -220,50 +270,63 @@ exports.updateAuction = asyncHandler(async (req, res) => {
   await auction.save();
   await syncProductForAuction(product, auction.status, pricing);
 
-  return sendSuccess(res, auction);
-});
+  return auction;
+};
 
-exports.placeBid = asyncHandler(async (req, res) => {
-  const auction = await Auction.findById(req.params.id);
+module.exports.placeBid = async function(auctionId, body, actor) {
+  var auction = await Auction.findById(auctionId);
+  var now;
+  var product;
+  var minimumBid;
+  var amount;
+  var currentWinningBid;
+  var reservedAmount;
+  var bidder;
+  var currentReserved;
+  var delta;
+  var availableBalance;
+  var bid;
+
   if (!auction) {
-    return sendError(res, 'Auction not found', 404);
+    return null;
   }
-  if (String(auction.seller) === String(req.user._id)) {
-    return sendError(res, 'Owner cannot bid on own auction', 400);
+  if (String(auction.seller) === String(actor.user._id)) {
+    throw createControllerError('Owner cannot bid on own auction', 400);
   }
   if (auction.status !== 'live') {
-    return sendError(res, 'Auction is not live', 400);
+    throw createControllerError('Auction is not live', 400);
   }
 
-  const now = new Date();
+  now = new Date();
   if (auction.startAt > now || auction.endAt <= now) {
-    return sendError(res, 'Auction is outside the bidding window', 400);
+    throw createControllerError('Auction is outside the bidding window', 400);
   }
 
-  const product = await Product.findById(auction.product);
+  product = await Product.findById(auction.product);
   if (!product) {
-    return sendError(res, 'Product not found', 404);
+    throw createControllerError('Product not found', 404);
   }
 
-  const minimumBid = Math.max(auction.currentBid || 0, auction.startingBid || 0) + (auction.bidStep || 1);
-  const amount = Number(req.body.amount || 0);
+  minimumBid = Math.max(auction.currentBid || 0, auction.startingBid || 0) + (auction.bidStep || 1);
+  amount = Number(body.amount || 0);
   if (amount < minimumBid) {
-    return sendError(res, `Bid must be at least ${minimumBid}`, 400);
+    throw createControllerError('Bid must be at least ' + minimumBid, 400);
   }
 
-  const currentWinningBid = await Bid.findOne({ auction: auction._id, isWinning: true });
-  const reservedAmount = getAuctionParticipationAmount({ auction, product, amount });
-  const bidder = await User.findById(req.user._id);
+  currentWinningBid = await Bid.findOne({ auction: auction._id, isWinning: true });
+  reservedAmount = getAuctionParticipationAmount({ auction: auction, product: product, amount: amount });
+  bidder = await User.findById(actor.user._id);
   if (!bidder) {
-    return sendError(res, 'Bidder not found', 404);
+    throw createControllerError('Bidder not found', 404);
   }
 
-  if (currentWinningBid && String(currentWinningBid.bidder) === String(req.user._id)) {
-    const currentReserved = Number(currentWinningBid.reservedAmount || currentWinningBid.amount || 0);
-    const delta = reservedAmount - currentReserved;
+  if (currentWinningBid && String(currentWinningBid.bidder) === String(actor.user._id)) {
+    currentReserved = Number(currentWinningBid.reservedAmount || currentWinningBid.amount || 0);
+    delta = reservedAmount - currentReserved;
+
     if (delta > 0) {
       await reserveWalletFunds({
-        userId: req.user._id,
+        userId: actor.user._id,
         amount: delta,
         auction: auction._id,
         bid: currentWinningBid._id,
@@ -271,7 +334,7 @@ exports.placeBid = asyncHandler(async (req, res) => {
       });
     } else if (delta < 0) {
       await releaseWalletReserve({
-        userId: req.user._id,
+        userId: actor.user._id,
         amount: Math.abs(delta),
         auction: auction._id,
         bid: currentWinningBid._id,
@@ -279,23 +342,23 @@ exports.placeBid = asyncHandler(async (req, res) => {
       });
     }
   } else {
-    const availableBalance = Number(bidder.balance || 0) - Number(bidder.lockedBalance || 0);
+    availableBalance = Number(bidder.balance || 0) - Number(bidder.lockedBalance || 0);
     if (availableBalance < reservedAmount) {
-      return sendError(
-        res,
-        `Wallet balance is not enough to participate. Required: ${reservedAmount}`,
+      throw createControllerError(
+        'Wallet balance is not enough to participate. Required: ' + reservedAmount,
         400
       );
     }
+
     await reserveWalletFunds({
-      userId: req.user._id,
+      userId: actor.user._id,
       amount: reservedAmount,
       auction: auction._id,
       description: 'Reserved wallet funds for auction participation',
     });
   }
 
-  if (currentWinningBid && String(currentWinningBid.bidder) !== String(req.user._id)) {
+  if (currentWinningBid && String(currentWinningBid.bidder) !== String(actor.user._id)) {
     await releaseWalletReserve({
       userId: currentWinningBid.bidder,
       amount: currentWinningBid.reservedAmount || currentWinningBid.amount,
@@ -306,8 +369,8 @@ exports.placeBid = asyncHandler(async (req, res) => {
 
     await createNotification({
       userId: currentWinningBid.bidder,
-      title: 'Bạn đã bị vượt giá',
-      message: 'Có người vừa trả giá cao hơn trong phiên đấu giá bạn tham gia.',
+      title: 'Ban da bi vuot gia',
+      message: 'Co nguoi vua tra gia cao hon trong phien dau gia ban tham gia.',
       type: 'auction_outbid',
       refType: 'auction',
       refId: String(auction._id),
@@ -319,20 +382,21 @@ exports.placeBid = asyncHandler(async (req, res) => {
     { auction: auction._id, isWinning: true },
     { $set: { isWinning: false, status: 'outbid' } }
   );
-  const bid = await Bid.create({
+
+  bid = await Bid.create({
     auction: auction._id,
     product: auction.product,
-    bidder: req.user._id,
-    amount,
-    reservedAmount,
-    maxAutoBid: req.body.maxAutoBid,
-    source: req.body.source || 'manual',
+    bidder: actor.user._id,
+    amount: amount,
+    reservedAmount: reservedAmount,
+    maxAutoBid: body.maxAutoBid,
+    source: body.source || 'manual',
     status: 'active',
     isWinning: true,
   });
 
   auction.currentBid = amount;
-  auction.winnerUser = req.user._id;
+  auction.winnerUser = actor.user._id;
   auction.winnerBid = bid._id;
   auction.totalBids += 1;
   auction.lastBidAt = new Date();
@@ -342,46 +406,54 @@ exports.placeBid = asyncHandler(async (req, res) => {
 
   await createNotification({
     userId: auction.seller,
-    title: 'Có trả giá mới',
-    message: `Phiên đấu giá vừa có người trả giá ${amount.toLocaleString('vi-VN')} VND.`,
+    title: 'Co tra gia moi',
+    message: 'Phien dau gia vua co nguoi tra gia ' + amount.toLocaleString('vi-VN') + ' VND.',
     type: 'auction_bid',
     refType: 'auction',
     refId: String(auction._id),
     metadata: { auctionId: String(auction._id), bidId: String(bid._id) },
   });
 
-  return sendSuccess(res, bid, null, 201);
-});
+  return bid;
+};
 
-exports.buyNow = asyncHandler(async (req, res) => {
-  const auction = await Auction.findById(req.params.id);
+module.exports.buyNow = async function(auctionId, actor) {
+  var auction = await Auction.findById(auctionId);
+  var product;
+  var buyNowPrice;
+  var buyer;
+  var availableBalance;
+  var currentWinningBid;
+  var buyNowBid;
+  var order;
+
   if (!auction) {
-    return sendError(res, 'Auction not found', 404);
+    return null;
   }
-  if (!['scheduled', 'live'].includes(auction.status)) {
-    return sendError(res, 'Auction is not available for buy-now', 400);
+  if (!containsValue(['scheduled', 'live'], auction.status)) {
+    throw createControllerError('Auction is not available for buy-now', 400);
   }
-  if (String(auction.seller) === String(req.user._id)) {
-    return sendError(res, 'Owner cannot buy own auction', 400);
+  if (String(auction.seller) === String(actor.user._id)) {
+    throw createControllerError('Owner cannot buy own auction', 400);
   }
 
-  const product = await Product.findById(auction.product);
+  product = await Product.findById(auction.product);
   if (!product) {
-    return sendError(res, 'Product not found', 404);
+    throw createControllerError('Product not found', 404);
   }
 
-  const buyNowPrice = Number(auction.buyNowPrice || product.buyNowPrice || product.price || 0);
+  buyNowPrice = Number(auction.buyNowPrice || product.buyNowPrice || product.price || 0);
   if (buyNowPrice <= 0) {
-    return sendError(res, 'Auction does not support buy-now', 400);
+    throw createControllerError('Auction does not support buy-now', 400);
   }
 
-  const buyer = await User.findById(req.user._id);
-  const availableBalance = Number(buyer.balance || 0) - Number(buyer.lockedBalance || 0);
+  buyer = await User.findById(actor.user._id);
+  availableBalance = Number(buyer.balance || 0) - Number(buyer.lockedBalance || 0);
   if (availableBalance < buyNowPrice) {
-    return sendError(res, `Wallet balance is not enough. Required: ${buyNowPrice}`, 400);
+    throw createControllerError('Wallet balance is not enough. Required: ' + buyNowPrice, 400);
   }
 
-  const currentWinningBid = await Bid.findOne({ auction: auction._id, isWinning: true });
+  currentWinningBid = await Bid.findOne({ auction: auction._id, isWinning: true });
   if (currentWinningBid) {
     await releaseWalletReserve({
       userId: currentWinningBid.bidder,
@@ -397,10 +469,10 @@ exports.buyNow = asyncHandler(async (req, res) => {
     { $set: { isWinning: false, status: 'cancelled' } }
   );
 
-  const buyNowBid = await Bid.create({
+  buyNowBid = await Bid.create({
     auction: auction._id,
     product: auction.product,
-    bidder: req.user._id,
+    bidder: actor.user._id,
     amount: buyNowPrice,
     reservedAmount: 0,
     source: 'proxy',
@@ -408,10 +480,10 @@ exports.buyNow = asyncHandler(async (req, res) => {
     isWinning: true,
   });
 
-  const order = await createAuctionSettlementOrder({
-    auction,
-    buyerId: req.user._id,
-    product,
+  order = await createAuctionSettlementOrder({
+    auction: auction,
+    buyerId: actor.user._id,
+    product: product,
     amount: buyNowPrice,
     type: 'auction_buy_now',
     buyerNotes: 'Generated from auction buy-now flow',
@@ -419,7 +491,7 @@ exports.buyNow = asyncHandler(async (req, res) => {
 
   auction.status = 'ended';
   auction.currentBid = buyNowPrice;
-  auction.winnerUser = req.user._id;
+  auction.winnerUser = actor.user._id;
   auction.winnerBid = buyNowBid._id;
   auction.isReserveMet = true;
   await auction.save();
@@ -433,17 +505,17 @@ exports.buyNow = asyncHandler(async (req, res) => {
   await Promise.all([
     createNotification({
       userId: auction.seller,
-      title: 'Đấu giá kết thúc (mua ngay)',
-      message: `Người mua đã chọn mua ngay với giá ${buyNowPrice.toLocaleString('vi-VN')} VND.`,
+      title: 'Dau gia ket thuc (mua ngay)',
+      message: 'Nguoi mua da chon mua ngay voi gia ' + buyNowPrice.toLocaleString('vi-VN') + ' VND.',
       type: 'auction_buy_now',
       refType: 'auction',
       refId: String(auction._id),
       metadata: { auctionId: String(auction._id), orderId: String(order._id) },
     }),
     createNotification({
-      userId: req.user._id,
-      title: 'Mua ngay thành công',
-      message: `Bạn đã mua ngay sản phẩm đấu giá với giá ${buyNowPrice.toLocaleString('vi-VN')} VND.`,
+      userId: actor.user._id,
+      title: 'Mua ngay thanh cong',
+      message: 'Ban da mua ngay san pham dau gia voi gia ' + buyNowPrice.toLocaleString('vi-VN') + ' VND.',
       type: 'auction_buy_now',
       refType: 'auction',
       refId: String(auction._id),
@@ -451,38 +523,47 @@ exports.buyNow = asyncHandler(async (req, res) => {
     }),
   ]);
 
-  return sendSuccess(res, { auction, order, bid: buyNowBid });
-});
+  return { auction: auction, order: order, bid: buyNowBid };
+};
 
-exports.closeAuction = asyncHandler(async (req, res) => {
-  const auction = await Auction.findById(req.params.id);
+module.exports.closeAuction = async function(auctionId, body, actor) {
+  var auction = await Auction.findById(auctionId);
+  var isOwner;
+  var isAdmin;
+
   if (!auction) {
-    return sendError(res, 'Auction not found', 404);
+    return null;
   }
-  const isOwner = String(auction.seller) === String(req.user._id);
-  const isAdmin = (req.userRoles || []).includes('admin');
+
+  isOwner = String(auction.seller) === String(actor.user._id);
+  isAdmin = (actor.userRoles || []).indexOf('admin') !== -1;
   if (!isOwner && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
+    throw createControllerError('Forbidden', 403);
   }
-  const result = await closeAuction(auction._id, {
-    force: Boolean(req.body.force || isAdmin),
-    cancelled: Boolean(req.body.cancelled),
+
+  return closeAuction(auction._id, {
+    force: Boolean(body.force || isAdmin),
+    cancelled: Boolean(body.cancelled),
   });
+};
 
-  return sendSuccess(res, result);
-});
+module.exports.openAuction = async function(auctionId, actor) {
+  var auction = await Auction.findById(auctionId);
+  var isOwner;
+  var isAdmin;
+  var now;
 
-exports.openAuction = asyncHandler(async (req, res) => {
-  const auction = await Auction.findById(req.params.id);
   if (!auction) {
-    return sendError(res, 'Auction not found', 404);
+    return null;
   }
-  const isOwner = String(auction.seller) === String(req.user._id);
-  const isAdmin = (req.userRoles || []).includes('admin');
+
+  isOwner = String(auction.seller) === String(actor.user._id);
+  isAdmin = (actor.userRoles || []).indexOf('admin') !== -1;
   if (!isOwner && !isAdmin) {
-    return sendError(res, 'Forbidden', 403);
+    throw createControllerError('Forbidden', 403);
   }
-  const now = new Date();
+
+  now = new Date();
   if (!auction.startAt || new Date(auction.startAt) > now) {
     auction.startAt = now;
   }
@@ -503,19 +584,21 @@ exports.openAuction = asyncHandler(async (req, res) => {
     buyNowPrice: auction.buyNowPrice,
   });
 
-  return sendSuccess(res, auction);
-});
+  return auction;
+};
 
-exports.deleteAuction = asyncHandler(async (req, res) => {
-  const auction = await Auction.findById(req.params.id);
+module.exports.deleteAuction = async function(auctionId, actor) {
+  var auction = await Auction.findById(auctionId);
+  var currentWinningBid;
+
   if (!auction) {
-    return sendError(res, 'Auction not found', 404);
+    return false;
   }
-  if (String(auction.seller) !== String(req.user._id) && !(req.userRoles || []).includes('admin')) {
-    return sendError(res, 'Forbidden', 403);
+  if (String(auction.seller) !== String(actor.user._id) && (actor.userRoles || []).indexOf('admin') === -1) {
+    throw createControllerError('Forbidden', 403);
   }
 
-  const currentWinningBid = await Bid.findOne({ auction: auction._id, isWinning: true });
+  currentWinningBid = await Bid.findOne({ auction: auction._id, isWinning: true });
   if (currentWinningBid) {
     await releaseWalletReserve({
       userId: currentWinningBid.bidder,
@@ -528,5 +611,6 @@ exports.deleteAuction = asyncHandler(async (req, res) => {
 
   await Bid.deleteMany({ auction: auction._id });
   await auction.deleteOne();
-  return sendSuccess(res, { deleted: true });
-});
+
+  return true;
+};

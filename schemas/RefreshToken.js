@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+var mongoose = require('mongoose');
 
-const refreshTokenSchema = new mongoose.Schema(
+var refreshTokenSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
@@ -54,4 +54,5 @@ refreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports =
   mongoose.models.RefreshToken || mongoose.model('RefreshToken', refreshTokenSchema);
+
 
